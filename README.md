@@ -7,4 +7,5 @@ Este proyecto consiste en una página **HTML** que utiliza **WebGL2** para dibuj
 - 🧩 `TRIANGLE_STRIP`  
 
 Además, se implementan **matrices de transformación** para aplicar **traslación, rotación y escalado** a los objetos.
+
 | [](Practica_1/capturas/panda.png)
