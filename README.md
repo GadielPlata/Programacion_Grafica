@@ -4,7 +4,8 @@ Este proyecto consiste en una página **HTML** que utiliza **WebGL2** para dibuj
 
 - 🔺 `TRIANGLE_FAN`  
 - 📏 `LINE_STRIP`  
-- 🧩 `TRIANGLE_STRIP`  
+- 🧩 `TRIANGLE_STRIP`
+- etc.
 
 Además, se implementan **matrices de transformación** para aplicar **traslación y escalado** a los objetos.
 
