@@ -10,5 +10,5 @@ Además, se implementan **matrices de transformación** para aplicar **traslaci�
 
 Ejemplo de la salida gráfica:  
 
-![Captura del proyecto](./capturas/Screenshot 2025-09-08 145808.png)
+![](Webgl_practica/capturas/Screenshot 2025-09-08 145808.png)
 
