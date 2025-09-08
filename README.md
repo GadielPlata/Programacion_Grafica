@@ -8,7 +8,7 @@ Este proyecto consiste en una página **HTML** que utiliza **WebGL2** para dibuj
 
 Además, se implementan **matrices de transformación** para aplicar **traslación y escalado** a los objetos.
 
-Ejemplo de la salida gráfica:  
+## 📷 Capturas de pantalla
 
-![](Webgl_practica/capturas/Screenshot 2025-09-08 145808.png)
+| ![](Webgl_practica/capturas/Screenshot 2025-09-08 145808.png)
 
