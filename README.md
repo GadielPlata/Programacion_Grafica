@@ -10,5 +10,5 @@ Además, se implementan **matrices de transformación** para aplicar **traslaci�
 
 ## 📷 Capturas de pantalla
 
-| ![](Webgl_practica/capturas/Screenshot 2025-09-08 145808.png)
+| ![](Webgl_practica/capturas/panda.png) 
 
