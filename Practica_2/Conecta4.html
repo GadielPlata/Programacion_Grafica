@@ -80,7 +80,6 @@
           for (let i = 0; i < 16; i++) c[i] = r[i];
         }
 
-        // ================== FIGURAS =====================
         function crearCirculo(radio, r,g,b){
             let vertices=[0,0];
             let colores=[r,g,b,1];
@@ -138,7 +137,6 @@
             return vao;
         }
 
-        // ================== FICHAS =====================
         function soltarFicha(col) {
             let columnaOcupada = false;
             for (let i = 0; i < fichasAnimando.length; i++) {
@@ -170,7 +168,6 @@
             });
         }
 
-        // ================== DIBUJO =====================
         function dibujarTablero(){
             gl.clear(gl.COLOR_BUFFER_BIT);
 
