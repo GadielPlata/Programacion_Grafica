@@ -144,21 +144,21 @@
             for (let i = 0; i < fichasAnimando.length; i++) {
                 if (fichasAnimando[i].col === col) {
                     columnaOcupada = true;
-                    break; // encontramos una ficha en la columna, no hace falta seguir
+                    break; 
                 }
             }
             if (columnaOcupada) {
-                return; // no se puede soltar otra ficha en la misma columna
+                return;
             }
 
-            let fila = tablero[col].lastIndexOf(null); // última fila libre desde abajo
-            if (fila === -1) return; // columna llena
+            let fila = tablero[col].lastIndexOf(null); 
+            if (fila === -1) return; 
 
             let color;
             if (turnoRojo) {
-                color = [1, 0, 0]; // rojo
+                color = [1, 0, 0];
             } else {
-                color = [0, 0, 1]; // azul
+                color = [0, 0, 1];
             }
             turnoRojo = !turnoRojo;
 
@@ -174,7 +174,7 @@
         function dibujarTablero(){
             gl.clear(gl.COLOR_BUFFER_BIT);
 
-            // círculos vacíos
+            // círculos
             let b=-3;
             for(let j=0;j<7;j++){
                 let a=2;
@@ -186,7 +186,7 @@
                     gl.drawArrays(gl.TRIANGLE_FAN,0,362);
                     a=a-1;
                 }
-                // rectángulo arriba
+                // rectangulo
                 identidad(MatrizModelo);
                 traslacion(MatrizModelo, b, 3, 0);
                 gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
@@ -195,7 +195,6 @@
                 b=b+1;
             }
 
-            // fichas fijas
             for(let c=0;c<7;c++){
                 for(let f=0;f<6;f++){
                     if(tablero[c][f]!==null){
@@ -210,7 +209,6 @@
                 }
             }
 
-            // fichas cayendo
             for (let i = fichasAnimando.length - 1; i >= 0; i--) {
                 let ficha = fichasAnimando[i];
                 ficha.yActual -= 0.05;
@@ -218,7 +216,7 @@
                 if (ficha.yActual <= yDestino) {
                     ficha.yActual = yDestino;
                     tablero[ficha.col][ficha.fila] = ficha.color;
-                    fichasAnimando.splice(i, 1); // eliminar la ficha del array
+                    fichasAnimando.splice(i, 1); 
                 }
                 let vaoFicha = crearCirculo(0.45, ficha.color[0], ficha.color[1], ficha.color[2]);
                 identidad(MatrizModelo);
@@ -235,7 +233,6 @@
             requestAnimationFrame(animar);
         }
 
-        // ================== MAIN =====================
         function main(){
             canvas=document.getElementById("webglcanvas");
             gl=canvas.getContext("webgl2");
@@ -259,17 +256,15 @@
             uMatrizVista=gl.getUniformLocation(prog,"uMatrizVista");
             uMatrizModelo=gl.getUniformLocation(prog,"uMatrizModelo");
 
-            // Crear figuras base
-            vaoCirculo = crearCirculo(0.45,1,1,1); // huecos blancos
-            vaoBoton   = crearRectangulo(0.9,0.3,0.2,0.2,0.8); // botones azules
+            vaoCirculo = crearCirculo(0.45,1,1,1); 
+            vaoBoton   = crearRectangulo(0.9,0.3,0.2,0.2,0.8);
 
-            // Proyección y vista
             ortho(MatrizProyeccion,-4,4,-4,4,-1,1);
             gl.uniformMatrix4fv(uMatrizProyeccion,false,MatrizProyeccion);
             identidad(MatrizVista);
             gl.uniformMatrix4fv(uMatrizVista,false,MatrizVista);
 
-            gl.clearColor(0,0,0.3,1); // fondo azul
+            gl.clearColor(0,0,0.3,1);
             gl.viewport(0,0,canvas.width,canvas.height);
 
             canvas.addEventListener("mousedown",mouseDown,false);
