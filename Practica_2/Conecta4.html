@@ -42,7 +42,14 @@
         let MatrizModelo = new Array(16);
 
         let vaoCirculo, vaoBoton;
-        let tablero = Array.from({length:7},()=>Array(6).fill(null));
+        let tablero = []; 
+        for (let i = 0; i < 7; i++) {
+            let columna = []; 
+            for (let j = 0; j < 6; j++) {
+                columna.push(null);
+            }
+            tablero.push(columna);
+        }
         let fichasAnimando = [];
         let turnoRojo = true;
 
