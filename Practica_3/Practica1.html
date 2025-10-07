@@ -47,7 +47,7 @@
     function toRadians(grados) {
     return grados * Math.PI / 180;
     }
-  // ================== UTILIDADES MATRICES =====================
+
     function identidad(r) {
         r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
         r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = 0;
@@ -113,7 +113,7 @@
     // nuevas variables para espiral
     let radio_gana=0,angulo_espiral=0;
 
-  // ================== CREACIÓN DE GEOMETRÍAS =====================
+
     function crearCirculoVAO(radio,r,g,b,lados=60){
         let v=[0,0],c=[r,g,b,1];
         for(let i=0;i<=lados;i++){
@@ -219,7 +219,6 @@
         }
         }
 
-        // fichas cayendo
         for(let i=fichasAnimando.length-1;i>=0;i--){
         let f=fichasAnimando[i];
         f.yActual-=0.05;
