@@ -106,7 +106,6 @@
     let fichasAnimando=[];
     let turnoRojo=true,juegoTerminado=false;
 
-    // 🔵 Animación de victoria
     let animandoGanar=false;
     let posX_gana=0,posY_gana=0,angulo_gana=0;
     let vaoCirculoGana=null,nCirculoGana=0;
@@ -251,7 +250,7 @@
         }
         }
 
-        // 🔵 Animación de victoria en espiral
+
         if(animandoGanar&&vaoCirculoGana){
         // actualizar ángulo y radio
         angulo_espiral += 8;       // velocidad angular
@@ -283,7 +282,6 @@
         requestAnimationFrame(animar);
     }
 
-  // ================== MAIN =====================
     function main(){
         canvas=document.getElementById("webglcanvas");
         gl=canvas.getContext("webgl2");
