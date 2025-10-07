@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Conecta 4 - Con animación de victoria</title>
+  <style>
+    body { background:#021; color:white; font-family: Arial, sans-serif; text-align:center; }
+    h1 { margin:10px 0; color:#ffd54f; text-shadow: 1px 1px 6px #000; }
+    #mensaje { margin-top:8px; font-weight:700; font-size:1.2rem; height:1.4rem; }
+    canvas { border:none; display:block; margin: 6px auto; }
+    #reiniciar { margin-top:8px; padding:6px 12px; font-size:1rem; display:none; }
+  </style>
+</head>
+<body>
+  <h1>Conecta 4</h1>
+  <canvas id="webglcanvas" width="500" height="500"></canvas>
+  <div id="mensaje"></div>
+  <button id="reiniciar" onclick="reiniciar()">Reiniciar partida</button>
+
+  <!-- Vertex shader -->
+  <script id="vs" type="x-shader/x-vertex">
+    #version 300 es
+    uniform mat4 uMatrizProyeccion;
+    uniform mat4 uMatrizVista;
+    uniform mat4 uMatrizModelo;
+    layout (location = 0) in vec2 aVertices;
+    layout (location = 1) in vec4 aColores;
+    out vec4 vColores;
+    void main() {
+      vColores = aColores;
+      gl_Position = uMatrizProyeccion * uMatrizVista * uMatrizModelo * vec4(aVertices, 0.0, 1.0);
+    }
+  </script>
+
+  <!-- Fragment shader -->
+  <script id="fs" type="x-shader/x-fragment">
+    #version 300 es
+    precision mediump float;
+    in vec4 vColores;
+    out vec4 color;
+    void main() {
+      color = vColores;
+    }
+  </script>
+
+  <script>
+    function toRadians(grados) {
+    return grados * Math.PI / 180;
+    }
+  // ================== UTILIDADES MATRICES =====================
+    function identidad(r) {
+        r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
+        r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = 0;
+        r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+        r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+    function traslacion(matriz, tx, ty, tz) {
+        let r = new Array(16);
+        r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = tx;
+        r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = ty;
+        r[2] = 0; r[6] = 0; r[10] = 1; r[14] = tz;
+        r[3] = 0; r[7] = 0; r[11] = 0; r[15] =  1;
+        multiplica(matriz, matriz, r);
+    }
+    function ortho(r,l,rgt,b,t,n,f){
+        r[0]=2/(rgt-l);r[4]=0;r[8]=0;r[12]=-(rgt+l)/(rgt-l);
+        r[1]=0;r[5]=2/(t-b);r[9]=0;r[13]=-(t+b)/(t-b);
+        r[2]=0;r[6]=0;r[10]=-2/(f-n);r[14]=-(f+n)/(f-n);
+        r[3]=0;r[7]=0;r[11]=0;r[15]=1;
+    }
+
+    function rotacionZ(matriz, theta) {
+        let r = new Array(16);
+        let c = Math.cos(toRadians(theta));
+        let s = Math.sin(toRadians(theta));
+
+        r[0]  =  c;  r[4]  = -s;  r[8]  =  0;  r[12] = 0;
+        r[1]  =  s;  r[5]  =  c;  r[9]  =  0;  r[13] = 0;
+        r[2]  =  0;  r[6]  =  0;  r[10] =  1;  r[14] = 0;
+        r[3]  =  0;  r[7]  =  0;  r[11] =  0;  r[15] = 1;
+
+        multiplica(matriz, matriz, r);
+    }
+
+    function multiplica(c, a, b) {
+          let r = new Array(16);
+          let i, j, k;
+          for (i = 0; i < 4; i++){
+            for (j = 0; j < 4; j++){
+              let s = 0;
+              for (k = 0; k < 4; k++)
+                s = s + a[i + k * 4] * b[k + j * 4];
+              r[i + j * 4] = s;
+            }
+          }
+          for (i = 0; i < 16; i++)
+            c[i] = r[i];
+    }
+
+ 
+    let canvas, gl;
+    let uMatrizProyeccion,uMatrizVista,uMatrizModelo;
+    let MatrizProyeccion=new Array(16),MatrizVista=new Array(16),MatrizModelo=new Array(16);
+    let vaoCirculoHueco,vaoBoton,vaoFichaProto;
+    let tablero=[...Array(7)].map(()=>Array(6).fill(null));
+    let fichasAnimando=[];
+    let turnoRojo=true,juegoTerminado=false;
+
+    // 🔵 Animación de victoria
+    let animandoGanar=false;
+    let posX_gana=0,posY_gana=0,angulo_gana=0;
+    let vaoCirculoGana=null,nCirculoGana=0;
+    let ganadorTexto="";
+    // nuevas variables para espiral
+    let radio_gana=0,angulo_espiral=0;
+
+  // ================== CREACIÓN DE GEOMETRÍAS =====================
+    function crearCirculoVAO(radio,r,g,b,lados=60){
+        let v=[0,0],c=[r,g,b,1];
+        for(let i=0;i<=lados;i++){
+        let a=i*2*Math.PI/lados;
+        v.push(radio*Math.cos(a),radio*Math.sin(a));
+        c.push(r,g,b,1);
+        }
+        let vao=gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        let vb=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+        let cb=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER,cb);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(c),gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1,4,gl.FLOAT,false,0,0);
+        gl.bindVertexArray(null);
+        return {vao:vao,n:v.length/2};
+    }
+    function crearRectangulo(an,al,r,g,b){
+        let v=[-an/2,-al/2, an/2,-al/2, an/2,al/2, -an/2,al/2];
+        let c=[r,g,b,1,r,g,b,1,r,g,b,1,r,g,b,1];
+        let vao=gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        let vb=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+        let cb=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER,cb);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(c),gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1,4,gl.FLOAT,false,0,0);
+        gl.bindVertexArray(null);
+        return vao;
+    }
+
+    function verificarGanador(color){
+        let [r,g,b]=color;
+        for(let c=0;c<7;c++)for(let f=0;f<6;f++){
+        let cel=tablero[c][f];
+        if(!cel)continue;
+        if(Math.abs(cel[0]-r)>0.001)continue;
+        if(c<=3&&tablero[c+1][f]&&tablero[c+2][f]&&tablero[c+3][f]&&
+            tablero[c+1][f][0]==r&&tablero[c+2][f][0]==r&&tablero[c+3][f][0]==r)return true;
+        if(f<=2&&tablero[c][f+1]&&tablero[c][f+2]&&tablero[c][f+3]&&
+            tablero[c][f+1][0]==r&&tablero[c][f+2][0]==r&&tablero[c][f+3][0]==r)return true;
+        if(c<=3&&f<=2&&tablero[c+1][f+1]&&tablero[c+2][f+2]&&tablero[c+3][f+3]&&
+            tablero[c+1][f+1][0]==r&&tablero[c+2][f+2][0]==r&&tablero[c+3][f+3][0]==r)return true;
+        if(c>=3&&f<=2&&tablero[c-1][f+1]&&tablero[c-2][f+2]&&tablero[c-3][f+3]&&
+            tablero[c-1][f+1][0]==r&&tablero[c-2][f+2][0]==r&&tablero[c-3][f+3][0]==r)return true;
+        }
+        return false;
+    }
+
+    function soltarFicha(col){
+        if(juegoTerminado||animandoGanar)return;
+        if(fichasAnimando.some(f=>f.col===col))return;
+        let fila=tablero[col].lastIndexOf(null);
+        if(fila===-1)return;
+        let color=turnoRojo?[1,0,0,1]:[0,0,1,1];
+        turnoRojo=!turnoRojo;
+        fichasAnimando.push({col,fila,yActual:3,color});
+    }
+
+
+    function dibujarTablero(){
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        // huecos
+        let b=-3;
+        for(let j=0;j<7;j++){
+        let a=2;
+        for(let i=0;i<6;i++){
+            identidad(MatrizModelo);
+            traslacion(MatrizModelo,b,a,0);
+            gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+            gl.bindVertexArray(vaoCirculoHueco.vao);
+            gl.drawArrays(gl.TRIANGLE_FAN,0,vaoCirculoHueco.n);
+            a--;
+        }
+        identidad(MatrizModelo);
+        traslacion(MatrizModelo,b,3,0);
+        gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+        gl.bindVertexArray(vaoBoton);
+        gl.drawArrays(gl.TRIANGLE_FAN,0,4);
+        b++;
+        }
+
+        // fichas fijas
+        for(let c=0;c<7;c++)for(let f=0;f<6;f++){
+        if(tablero[c][f]){
+            let col=tablero[c][f];
+            let v=crearCirculoVAO(0.45,col[0],col[1],col[2],60);
+            identidad(MatrizModelo);
+            traslacion(MatrizModelo,-3+c,2-f,0);
+            gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+            gl.bindVertexArray(v.vao);
+            gl.drawArrays(gl.TRIANGLE_FAN,0,v.n);
+        }
+        }
+
+        // fichas cayendo
+        for(let i=fichasAnimando.length-1;i>=0;i--){
+        let f=fichasAnimando[i];
+        f.yActual-=0.05;
+        let yDestino=2-f.fila;
+        if(f.yActual<=yDestino){
+            f.yActual=yDestino;
+            tablero[f.col][f.fila]=f.color.slice(0,3);
+            fichasAnimando.splice(i,1);
+            if(verificarGanador(f.color.slice(0,3))){
+            animandoGanar=true;
+            posX_gana=-3+f.col;
+            posY_gana=f.yActual;
+            angulo_gana=0;
+            radio_gana=Math.hypot(posX_gana,posY_gana);
+            angulo_espiral=Math.atan2(posY_gana,posX_gana)*(180/Math.PI);
+            ganadorTexto=f.color[0]===1?"¡JUGADOR 1 (Rojo) GANADOR!":"¡JUGADOR 2 (Azul) GANADOR!";
+            vaoCirculoGana=crearCirculoVAO(0.6,f.color[0],f.color[1],f.color[2],80);
+            document.getElementById("mensaje").innerText="";
+            document.getElementById("reiniciar").style.display="none";
+            }
+        }else{
+            let v=crearCirculoVAO(0.45,f.color[0],f.color[1],f.color[2],60);
+            identidad(MatrizModelo);
+            traslacion(MatrizModelo,-3+f.col,f.yActual,0);
+            gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+            gl.bindVertexArray(v.vao);
+            gl.drawArrays(gl.TRIANGLE_FAN,0,v.n);
+        }
+        }
+
+        // 🔵 Animación de victoria en espiral
+        if(animandoGanar&&vaoCirculoGana){
+        // actualizar ángulo y radio
+        angulo_espiral += 8;       // velocidad angular
+        radio_gana *= 0.96;        // se acerca al centro
+
+        let x = radio_gana * Math.cos(angulo_espiral*Math.PI/180);
+        let y = radio_gana * Math.sin(angulo_espiral*Math.PI/180);
+
+        identidad(MatrizModelo);
+        traslacion(MatrizModelo,x,y,0);
+        rotacionZ(MatrizModelo,angulo_gana);
+        gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+        gl.bindVertexArray(vaoCirculoGana.vao);
+        gl.drawArrays(gl.TRIANGLE_FAN,0,vaoCirculoGana.n);
+
+        angulo_gana += 6;
+
+        if(radio_gana<0.1){
+            animandoGanar=false;
+            juegoTerminado=true;
+            document.getElementById("mensaje").innerText=ganadorTexto;
+            document.getElementById("reiniciar").style.display="inline-block";
+        }
+        }
+    }
+
+    function animar(){
+        dibujarTablero();
+        requestAnimationFrame(animar);
+    }
+
+  // ================== MAIN =====================
+    function main(){
+        canvas=document.getElementById("webglcanvas");
+        gl=canvas.getContext("webgl2");
+        let vs=gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs,document.getElementById("vs").text.trim());
+        gl.compileShader(vs);
+        let fs=gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs,document.getElementById("fs").text.trim());
+        gl.compileShader(fs);
+        let prog=gl.createProgram();
+        gl.attachShader(prog,vs);gl.attachShader(prog,fs);
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+        uMatrizProyeccion=gl.getUniformLocation(prog,"uMatrizProyeccion");
+        uMatrizVista=gl.getUniformLocation(prog,"uMatrizVista");
+        uMatrizModelo=gl.getUniformLocation(prog,"uMatrizModelo");
+        vaoCirculoHueco=crearCirculoVAO(0.45,1,1,1,60);
+        vaoBoton=crearRectangulo(0.9,0.3,0.2,0.2,0.8);
+        ortho(MatrizProyeccion,-4,4,-4,4,-1,1);
+        gl.uniformMatrix4fv(uMatrizProyeccion,false,MatrizProyeccion);
+        identidad(MatrizVista);
+        gl.uniformMatrix4fv(uMatrizVista,false,MatrizVista);
+        gl.clearColor(0,0,0.3,1);
+        gl.viewport(0,0,canvas.width,canvas.height);
+        canvas.addEventListener("mousedown",mouseDown,false);
+        animar();
+    }
+
+    function mouseDown(e){
+        let r=canvas.getBoundingClientRect();
+        let x=( (e.clientX-r.left)*8)/canvas.width-4;
+        let y=4-((e.clientY-r.top)*8)/canvas.height;
+        for(let col=0;col<7;col++){
+        let cx=-3+col;
+        if(x>cx-0.45&&x<cx+0.45&&y>2.8&&y<3.2)soltarFicha(col);
+        }
+    }
+
+    function reiniciar(){
+        tablero=[...Array(7)].map(()=>Array(6).fill(null));
+        fichasAnimando=[];
+        turnoRojo=true;
+        juegoTerminado=false;
+        animandoGanar=false;
+        vaoCirculoGana=null;
+        document.getElementById("mensaje").innerText="";
+        document.getElementById("reiniciar").style.display="none";
+    }
+
+    window.onload=main;
+  </script>
+</body>
+</html>
