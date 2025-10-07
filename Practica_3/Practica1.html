@@ -251,9 +251,8 @@
 
 
         if(animandoGanar&&vaoCirculoGana){
-        // actualizar ángulo y radio
-        angulo_espiral += 8;       // velocidad angular
-        radio_gana *= 0.96;        // se acerca al centro
+        angulo_espiral += 8;      
+        radio_gana *= 0.96;       
 
         let x = radio_gana * Math.cos(angulo_espiral*Math.PI/180);
         let y = radio_gana * Math.sin(angulo_espiral*Math.PI/180);
