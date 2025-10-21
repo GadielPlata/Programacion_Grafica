@@ -58,11 +58,11 @@
 
         void main() {
             if (uUsarTextura == 1) {
-                if (uTipoObjeto == 1) { // Fondo
+                if (uTipoObjeto == 1) { 
                     color = texture(uTexturaFondo, vCoordenadasDeTextura);
-                } else if (uJugadorID == 1) { // Ficha Jugador 1
+                } else if (uJugadorID == 1) { 
                     color = texture(uTexturaFutbol, vCoordenadasDeTextura);
-                } else { // Ficha Jugador 2
+                } else { 
                     color = texture(uTexturaBasquet, vCoordenadasDeTextura);
                 }
             } else {
@@ -72,6 +72,7 @@
     </script>
 
     <script>
+        
         function toRadians(grados) { return grados * Math.PI / 180; }
         function identidad(r) {
             r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
@@ -87,7 +88,8 @@
             r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
             multiplica(matriz, matriz, r);
         }
-        function escalado(matriz, sx, sy, sz) { 
+        function escalado(matriz, sx, sy, sz) {
+            let r = new Array(16);
             r[0] = sx; r[4] = 0; r[ 8] = 0; r[12] = 0;
             r[1] = 0; r[5] = sy; r[ 9] = 0; r[13] = 0;
             r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
@@ -302,7 +304,7 @@
             gl.activeTexture(gl.TEXTURE2); 
             gl.uniform1i(uTexturaFondo, 2); 
             gl.bindTexture(gl.TEXTURE_2D, codigoTexturaFondo);
-            
+
             dibujarObjeto(vaoFondo, 0, 0);
 
             let b=-3;
@@ -322,7 +324,7 @@
                     
                     let sx = 1; 
                     if (tablero[c][f] === 2) { 
-                        sx = 1.5; // 🚩 Escala X para Basquet
+                        sx = 1.5; 
                     }
 
                     dibujarObjeto(vaoFicha, -3+c, 2-f, 0, sx, 1);
@@ -335,7 +337,7 @@
                 
                 let sx = 1; 
                 if (f.jugadorID === 2) { 
-                    sx = 1.5; // 
+                    sx = 1.5;
                 }
 
                 f.yActual -= 0.05;
@@ -374,7 +376,7 @@
                 
                 let sx = 1; 
                 if (ganadorID === 2) { 
-                    sx = 1.5; // 
+                    sx = 1.5; 
                 }
 
                 dibujarObjeto(vaoCirculoGana, x, y, angulo_gana, sx, 1);
@@ -425,6 +427,7 @@
             document.getElementById("mensaje").innerText="";
             document.getElementById("reiniciar").style.display="none";
         }
+
 
         function main(){
             canvas=document.getElementById("webglcanvas");
