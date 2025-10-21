@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <title>Conecta 4 </title>
+    <style>
+        body { background:#021; color:white; font-family: Arial, sans-serif; text-align:center; }
+        h1 { margin:10px 0; color:#ffd54f; text-shadow: 1px 1px 6px #000; }
+        #mensaje { margin-top:8px; font-weight:700; font-size:1.2rem; height:1.4rem; }
+        canvas { border:none; display:block; margin: 6px auto; }
+        #reiniciar { margin-top:8px; padding:6px 12px; font-size:1rem; display:none; }
+    </style>
+</head>
+<body>
+    <h1>Conecta 4 </h1>
+    <canvas id="webglcanvas" width="500" height="500"></canvas>
+    <div id="mensaje"></div>
+    <button id="reiniciar" onclick="reiniciar()">Reiniciar partida</button>
+
+    <img src="futbol.png" id="imagenTexturaFutbol" hidden />
+    <img src="basquet.png" id="imagenTexturaBasquet" hidden />
+    <img src="fondo.jpg" id="imagenTexturaFondo" hidden />
+
+    <script id="vs" type="x-shader/x-vertex">
+        #version 300 es
+        uniform mat4 uMatrizProyeccion;
+        uniform mat4 uMatrizVista;
+        uniform mat4 uMatrizModelo;
+        layout (location = 0) in vec2 aVertices;
+        layout (location = 1) in vec4 aColores;
+        layout (location = 2) in vec2 aCoordenadasDeTextura;
+        out vec4 vColores;
+        out vec2 vCoordenadasDeTextura;
+
+        void main() {
+            vColores = aColores;
+            vCoordenadasDeTextura = aCoordenadasDeTextura;
+            gl_Position = uMatrizProyeccion * uMatrizVista * uMatrizModelo * vec4(aVertices, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fs" type="x-shader/x-fragment">
+        #version 300 es
+        precision mediump float;
+        
+        in vec4 vColores;
+        in vec2 vCoordenadasDeTextura;
+        
+        uniform sampler2D uTexturaFutbol; 
+        uniform sampler2D uTexturaBasquet; 
+        uniform sampler2D uTexturaFondo; 
+        
+        uniform int uUsarTextura;
+        uniform int uJugadorID; 
+        uniform int uTipoObjeto;
+
+        out vec4 color;
+
+        void main() {
+            if (uUsarTextura == 1) {
+                if (uTipoObjeto == 1) { // Fondo
+                    color = texture(uTexturaFondo, vCoordenadasDeTextura);
+                } else if (uJugadorID == 1) { // Ficha Jugador 1
+                    color = texture(uTexturaFutbol, vCoordenadasDeTextura);
+                } else { // Ficha Jugador 2
+                    color = texture(uTexturaBasquet, vCoordenadasDeTextura);
+                }
+            } else {
+                color = vColores;
+            }
+        }
+    </script>
+
+    <script>
+        // ====================================================================
+        // === UTILERÍAS DE MATRICES (Adición de escalado y reorden en multiplica)
+        // ====================================================================
+        function toRadians(grados) { return grados * Math.PI / 180; }
+        function identidad(r) {
+            r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
+            r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = 0;
+            r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+            r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+        }
+        function traslacion(matriz, tx, ty, tz) {
+            let r = new Array(16);
+            r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = tx;
+            r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = ty;
+            r[2] = 0; r[6] = 0; r[10] = 1; r[14] = tz;
+            r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+            multiplica(matriz, matriz, r);
+        }
+        function escalado(matriz, sx, sy, sz) { // 🚩 Nueva función de escalado
+            let r = new Array(16);
+            r[0] = sx; r[4] = 0; r[ 8] = 0; r[12] = 0;
+            r[1] = 0; r[5] = sy; r[ 9] = 0; r[13] = 0;
+            r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
+            r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+            multiplica(matriz, matriz, r);
+        }
+        function ortho(r,l,rgt,b,t,n,f){
+            r[0]=2/(rgt-l);r[4]=0;r[8]=0;r[12]=-(rgt+l)/(rgt-l);
+            r[1]=0;r[5]=2/(t-b);r[9]=0;r[13]=-(t+b)/(t-b);
+            r[2]=0;r[6]=0;r[10]=-2/(f-n);r[14]=-(f+n)/(f-n);
+            r[3]=0;r[7]=0;r[11]=0;r[15]=1;
+        }
+        function rotacionZ(matriz, theta) {
+            let r = new Array(16);
+            let c = Math.cos(toRadians(theta));
+            let s = Math.sin(toRadians(theta));
+            r[0] = c; r[4] = -s; r[8] = 0; r[12] = 0;
+            r[1] = s; r[5] = c; r[9] = 0; r[13] = 0;
+            r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+            r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+            multiplica(matriz, matriz, r);
+        }
+        function multiplica(c, a, b) {
+            let r = new Array(16);
+            let i, j, k;
+            for (i = 0; i < 4; i++){
+                for (j = 0; j < 4; j++){
+                    let s = 0;
+                    for (k = 0; k < 4; k++)
+                        s = s + a[i + k * 4] * b[k + j * 4];
+                    r[i + j * 4] = s;
+                }
+            }
+            for (i = 0; i < 16; i++)
+                c[i] = r[i];
+        }
+
+        let canvas, gl;
+        let uMatrizProyeccion, uMatrizVista, uMatrizModelo, uTexturaFutbol, uTexturaBasquet, uTexturaFondo, uUsarTextura, uJugadorID, uTipoObjeto; 
+        let MatrizProyeccion = new Array(16), MatrizVista = new Array(16), MatrizModelo = new Array(16);
+        let vaoCirculoHueco, vaoBoton, vaoFichaRojo, vaoFichaAzul, vaoFondo; 
+        let tablero = [...Array(7)].map(()=>Array(6).fill(0)); 
+        let fichasAnimando = [];
+        let turnoRojo = true, juegoTerminado = false;
+        let codigoTexturaFutbol, codigoTexturaBasquet, codigoTexturaFondo; 
+
+        let animandoGanar = false;
+        let ganadorID = 0;
+        let angulo_gana = 0;
+        let vaoCirculoGana = null;
+        let ganadorTexto = "";
+        let radio_gana = 0, angulo_espiral = 0;
+
+        // ====================================================================
+        // === GESTIÓN DE TEXTURA Y GEOMETRÍAS (Optimizado)
+        // ====================================================================
+        function leeLaTextura(gl, ID, codigo) {
+            gl.bindTexture(gl.TEXTURE_2D, codigo);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            let imagen = document.getElementById(ID);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imagen);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+        }
+        
+        // Crea un disco sólido (para huecos del tablero)
+        function crearCirculoVAO(radio, r, g, b, lados = 60){
+            let v = [0, 0];
+            let c = [r, g, b, 1];
+            let uv = [0.5, 0.5]; 
+
+            for(let i = 0; i <= lados; i++){
+                let a = i * 2 * Math.PI / lados;
+                let x = radio * Math.cos(a);
+                let y = radio * Math.sin(a);
+                
+                v.push(x, y);
+                c.push(r, g, b, 1);
+                uv.push(x/radio * 0.5 + 0.5, y/radio * 0.5 + 0.5); 
+            }
+
+            let vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+
+            let vb = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            let cb = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, cb);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(c), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0); 
+            
+            let uvb = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, uvb);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(uv), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(2);
+            gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+
+            gl.bindVertexArray(null);
+            return {vao: vao, n: v.length/2, usarTextura: false, jugadorID: 0, tipoObjeto: 0}; 
+        }
+        
+        // Crea un rectángulo de color (para el botón)
+        function crearRectangulo(an,al,r,g,b){
+            let v=[-an/2,-al/2, an/2,-al/2, an/2,al/2, -an/2,al/2];
+            let c=[r,g,b,1,r,g,b,1,r,g,b,1,r,g,b,1];
+            let vao=gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            
+            let vb=gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+            gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+            
+            let cb=gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER,cb);
+            gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(c),gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1,4,gl.FLOAT,false,0,0);
+            
+            gl.disableVertexAttribArray(2); 
+
+            gl.bindVertexArray(null);
+            return {vao: vao, usarTextura: false, jugadorID: 0, n: 4, tipoObjeto: 0}; 
+        }
+
+        // Crea VAOs cuadrados texturizados (Fondo y Fichas)
+        function crearRectanguloTextura(an, al, tipoObjeto = 0, jugadorID = 0) { 
+            let v = [
+                -an/2, -al/2, 
+                 an/2, -al/2, 
+                 an/2,  al/2, 
+                -an/2,  al/2  
+            ];
+            let uv = [
+                0.0, 0.0, 
+                1.0, 0.0, 
+                1.0, 1.0, 
+                0.0, 1.0  
+            ];
+
+            let vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+
+            let vb = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            gl.disableVertexAttribArray(1); 
+
+            let uvb = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, uvb);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(uv), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(2);
+            gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+
+            gl.bindVertexArray(null);
+            return { vao: vao, n: v.length / 2, usarTextura: true, jugadorID: jugadorID, tipoObjeto: tipoObjeto };
+        }
+
+        // ====================================================================
+        // === LÓGICA DEL JUEGO Y DIBUJO (Implementación del escalado)
+        // ====================================================================
+        function verificarGanador(jugadorID){
+            for(let c=0;c<7;c++)for(let f=0;f<6;f++){
+                let cel=tablero[c][f];
+                if(cel!==jugadorID)continue;
+                
+                if(c<=3&&tablero[c+1][f]===jugadorID&&tablero[c+2][f]===jugadorID&&tablero[c+3][f]===jugadorID)return true;
+                if(f<=2&&tablero[c][f+1]===jugadorID&&tablero[c][f+2]===jugadorID&&tablero[c][f+3]===jugadorID)return true;
+                if(c<=3&&f<=2&&tablero[c+1][f+1]===jugadorID&&tablero[c+2][f+2]===jugadorID&&tablero[c+3][f+3]===jugadorID)return true;
+                if(c>=3&&f<=2&&tablero[c-1][f+1]===jugadorID&&tablero[c-2][f+2]===jugadorID&&tablero[c-3][f+3]===jugadorID)return true;
+            }
+            return false;
+        }
+
+        // 🚩 MODIFICADA: Ahora acepta factores de escalado sx, sy
+        // Función de dibujo con selección de Textura/ID/TipoObjeto
+        function dibujarObjeto(objeto, x, y, rot=0, sx=1, sy=1){ 
+            gl.uniform1i(uUsarTextura, objeto.usarTextura ? 1 : 0);
+            gl.uniform1i(uTipoObjeto, objeto.tipoObjeto); 
+            
+            if (objeto.usarTextura && objeto.tipoObjeto !== 1) { 
+                gl.uniform1i(uJugadorID, objeto.jugadorID);
+            }
+
+            identidad(MatrizModelo);
+            
+            // 🚩 APLICAR ESCALADO
+            if (sx !== 1 || sy !== 1) {
+                escalado(MatrizModelo, sx, sy, 1);
+            }
+
+            if(rot !== 0) rotacionZ(MatrizModelo, rot);
+
+            // 🚩 CAMBIO CRUCIAL: Dividir el desplazamiento X por el factor de escala X (sx)
+            // Esto compensa el efecto de estiramiento en la posición de traslación.
+            traslacion(MatrizModelo, x / sx, y / sy, 0); 
+
+            gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
+            gl.bindVertexArray(objeto.vao);
+            gl.drawArrays(gl.TRIANGLE_FAN,0,objeto.n);
+        }
+
+        function dibujarTablero(){
+            gl.clear(gl.COLOR_BUFFER_BIT); 
+
+            // 1. ENLACE DE TEXTURAS
+            gl.activeTexture(gl.TEXTURE0);
+            gl.uniform1i(uTexturaFutbol, 0); 
+            gl.bindTexture(gl.TEXTURE_2D, codigoTexturaFutbol);
+            
+            gl.activeTexture(gl.TEXTURE1);
+            gl.uniform1i(uTexturaBasquet, 1); 
+            gl.bindTexture(gl.TEXTURE_2D, codigoTexturaBasquet);
+
+            gl.activeTexture(gl.TEXTURE2); 
+            gl.uniform1i(uTexturaFondo, 2); 
+            gl.bindTexture(gl.TEXTURE_2D, codigoTexturaFondo);
+
+            // 2. Dibujar el fondo
+            dibujarObjeto(vaoFondo, 0, 0);
+
+            // 3. Dibujar Tablero (Huecos y Botones)
+            let b=-3;
+            for(let j=0;j<7;j++){
+                let a=2;
+                for(let i=0;i<6;i++){
+                    dibujarObjeto(vaoCirculoHueco, b, a);
+                    a--;
+                }
+                dibujarObjeto(vaoBoton, b, 3);
+                b++;
+            }
+
+            // 4. Dibujar Fichas fijas
+            for(let c=0;c<7;c++)for(let f=0;f<6;f++){
+                if(tablero[c][f] !== 0){
+                    let vaoFicha = tablero[c][f] === 1 ? vaoFichaRojo : vaoFichaAzul;
+                    
+                    let sx = 1; 
+                    if (tablero[c][f] === 2) { 
+                        sx = 1.5; // 🚩 Escala X para Basquet
+                    }
+
+                    dibujarObjeto(vaoFicha, -3+c, 2-f, 0, sx, 1);
+                }
+            }
+
+            // 5. Dibujar Fichas cayendo (ANIMACIÓN)
+            for(let i = fichasAnimando.length - 1; i >= 0; i--){
+                let f = fichasAnimando[i];
+                let vaoFicha = f.jugadorID === 1 ? vaoFichaRojo : vaoFichaAzul;
+                
+                let sx = 1; 
+                if (f.jugadorID === 2) { 
+                    sx = 1.5; // 🚩 Escala X para Basquet cayendo
+                }
+
+                f.yActual -= 0.05;
+                let yDestino = 2 - f.fila;
+                
+                if(f.yActual <= yDestino){
+                    f.yActual = yDestino;
+                    tablero[f.col][f.fila] = f.jugadorID;
+                    
+                    fichasAnimando.splice(i, 1); 
+
+                    if(verificarGanador(f.jugadorID)){
+                        animandoGanar=true;
+                        ganadorID = f.jugadorID;
+                        let posX_gana=-3+f.col;
+                        let posY_gana=f.yActual;
+                        angulo_gana=0;
+                        radio_gana=Math.hypot(posX_gana,posY_gana);
+                        angulo_espiral=Math.atan2(posY_gana,posX_gana)*(180/Math.PI);
+                        ganadorTexto=f.jugadorID===1?"¡JUGADOR 1 GANA!":"¡JUGADOR 2 GANA!";
+                        
+                        vaoCirculoGana=f.jugadorID===1 ? vaoFichaRojo : vaoFichaAzul; 
+                        document.getElementById("mensaje").innerText="";
+                        document.getElementById("reiniciar").style.display="none";
+                    }
+                }else{
+                    dibujarObjeto(vaoFicha, -3+f.col, f.yActual, 0, sx, 1);
+                }
+            }
+
+            // 6. Animación de victoria en espiral
+            if(animandoGanar && vaoCirculoGana){
+                angulo_espiral += 8;
+                radio_gana *= 0.96;
+                let x = radio_gana * Math.cos(angulo_espiral*Math.PI/180);
+                let y = radio_gana * Math.sin(angulo_espiral*Math.PI/180);
+                
+                let sx = 1; 
+                if (ganadorID === 2) { 
+                    sx = 1.5; // 🚩 Escala X si el ganador es Basquet
+                }
+
+                dibujarObjeto(vaoCirculoGana, x, y, angulo_gana, sx, 1);
+                angulo_gana += 6;
+
+                if(radio_gana<0.1){
+                    animandoGanar=false;
+                    juegoTerminado=true;
+                    document.getElementById("mensaje").innerText=ganadorTexto;
+                    document.getElementById("reiniciar").style.display="inline-block";
+                }
+            }
+        }
+
+        function animar(){
+            dibujarTablero();
+            requestAnimationFrame(animar);
+        }
+
+        function soltarFicha(col){
+            if(juegoTerminado||animandoGanar)return;
+            if(fichasAnimando.some(f=>f.col===col))return;
+            let fila=tablero[col].lastIndexOf(0);
+            if(fila===-1)return;
+            
+            let jugadorID=turnoRojo?1:2;
+            turnoRojo=!turnoRojo;
+            fichasAnimando.push({col,fila,yActual:3,jugadorID});
+        }
+        
+        function mouseDown(e){
+            let r=canvas.getBoundingClientRect();
+            let x=( (e.clientX-r.left)*8)/canvas.width-4;
+            let y=4-((e.clientY-r.top)*8)/canvas.height;
+            for(let col=0;col<7;col++){
+                let cx=-3+col;
+                if(x>cx-0.45&&x<cx+0.45&&y>2.8&&y<3.2)soltarFicha(col);
+            }
+        }
+
+        function reiniciar(){
+            tablero=[...Array(7)].map(()=>Array(6).fill(0));
+            fichasAnimando=[];
+            turnoRojo=true;
+            juegoTerminado=false;
+            animandoGanar=false;
+            vaoCirculoGana=null;
+            document.getElementById("mensaje").innerText="";
+            document.getElementById("reiniciar").style.display="none";
+        }
+
+
+        // ====================================================================
+        // === FUNCIÓN PRINCIPAL (MAIN)
+        // ====================================================================
+        function main(){
+            canvas=document.getElementById("webglcanvas");
+            gl=canvas.getContext("webgl2");
+            
+            let vs=gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vs,document.getElementById("vs").text.trim());
+            gl.compileShader(vs);
+            let fs=gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fs,document.getElementById("fs").text.trim());
+            gl.compileShader(fs);
+            let prog=gl.createProgram();
+            gl.attachShader(prog,vs);gl.attachShader(prog,fs);
+            gl.linkProgram(prog);
+            gl.useProgram(prog);
+
+            uMatrizProyeccion=gl.getUniformLocation(prog,"uMatrizProyeccion");
+            uMatrizVista=gl.getUniformLocation(prog,"uMatrizVista");
+            uMatrizModelo=gl.getUniformLocation(prog,"uMatrizModelo");
+            
+            uTexturaFutbol=gl.getUniformLocation(prog,"uTexturaFutbol");
+            uTexturaBasquet=gl.getUniformLocation(prog,"uTexturaBasquet");
+            uTexturaFondo=gl.getUniformLocation(prog,"uTexturaFondo");
+
+            uUsarTextura=gl.getUniformLocation(prog,"uUsarTextura"); 
+            uJugadorID=gl.getUniformLocation(prog,"uJugadorID");
+            uTipoObjeto=gl.getUniformLocation(prog,"uTipoObjeto");
+
+            // Cargar todas las texturas
+            codigoTexturaFutbol = gl.createTexture();
+            leeLaTextura(gl, "imagenTexturaFutbol", codigoTexturaFutbol);
+            codigoTexturaBasquet = gl.createTexture();
+            leeLaTextura(gl, "imagenTexturaBasquet", codigoTexturaBasquet);
+            codigoTexturaFondo = gl.createTexture(); 
+            leeLaTextura(gl, "imagenTexturaFondo", codigoTexturaFondo);
+
+            // Creación de VAOs
+            vaoCirculoHueco=crearCirculoVAO(0.45, 1, 1, 1, 60); 
+            
+            // Fichas: Cuadrados texturizados (0.9x0.9)
+            vaoFichaRojo=crearRectanguloTextura(0.9, 0.9, 0, 1); 
+            vaoFichaAzul=crearRectanguloTextura(0.9, 0.9, 0, 2); 
+            
+            vaoBoton=crearRectangulo(0.9,0.3,0.2,0.2,0.8); 
+            
+            vaoFondo = crearRectanguloTextura(8, 8, 1, 0); 
+
+            ortho(MatrizProyeccion,-4,4,-4,4,-1,1);
+            gl.uniformMatrix4fv(uMatrizProyeccion,false,MatrizProyeccion);
+            identidad(MatrizVista);
+            gl.uniformMatrix4fv(uMatrizVista,false,MatrizVista);
+            
+            // Habilitar Blending para la transparencia
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            gl.viewport(0,0,canvas.width,canvas.height);
+            canvas.addEventListener("mousedown",mouseDown,false);
+            animar();
+        }
+
+        window.onload=main;
+    </script>
+</body>
+</html>
