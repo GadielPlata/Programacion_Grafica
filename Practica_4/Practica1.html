@@ -72,9 +72,6 @@
     </script>
 
     <script>
-        // ====================================================================
-        // === UTILERÍAS DE MATRICES (Adición de escalado y reorden en multiplica)
-        // ====================================================================
         function toRadians(grados) { return grados * Math.PI / 180; }
         function identidad(r) {
             r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
@@ -145,9 +142,6 @@
         let ganadorTexto = "";
         let radio_gana = 0, angulo_espiral = 0;
 
-        // ====================================================================
-        // === GESTIÓN DE TEXTURA Y GEOMETRÍAS (Optimizado)
-        // ====================================================================
         function leeLaTextura(gl, ID, codigo) {
             gl.bindTexture(gl.TEXTURE_2D, codigo);
             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -160,7 +154,6 @@
             gl.bindTexture(gl.TEXTURE_2D, null);
         }
         
-        // Crea un disco sólido (para huecos del tablero)
         function crearCirculoVAO(radio, r, g, b, lados = 60){
             let v = [0, 0];
             let c = [r, g, b, 1];
@@ -201,7 +194,6 @@
             return {vao: vao, n: v.length/2, usarTextura: false, jugadorID: 0, tipoObjeto: 0}; 
         }
         
-        // Crea un rectángulo de color (para el botón)
         function crearRectangulo(an,al,r,g,b){
             let v=[-an/2,-al/2, an/2,-al/2, an/2,al/2, -an/2,al/2];
             let c=[r,g,b,1,r,g,b,1,r,g,b,1,r,g,b,1];
@@ -226,7 +218,6 @@
             return {vao: vao, usarTextura: false, jugadorID: 0, n: 4, tipoObjeto: 0}; 
         }
 
-        // Crea VAOs cuadrados texturizados (Fondo y Fichas)
         function crearRectanguloTextura(an, al, tipoObjeto = 0, jugadorID = 0) { 
             let v = [
                 -an/2, -al/2, 
@@ -262,9 +253,6 @@
             return { vao: vao, n: v.length / 2, usarTextura: true, jugadorID: jugadorID, tipoObjeto: tipoObjeto };
         }
 
-        // ====================================================================
-        // === LÓGICA DEL JUEGO Y DIBUJO (Implementación del escalado)
-        // ====================================================================
         function verificarGanador(jugadorID){
             for(let c=0;c<7;c++)for(let f=0;f<6;f++){
                 let cel=tablero[c][f];
@@ -278,8 +266,6 @@
             return false;
         }
 
-        // 🚩 MODIFICADA: Ahora acepta factores de escalado sx, sy
-        // Función de dibujo con selección de Textura/ID/TipoObjeto
         function dibujarObjeto(objeto, x, y, rot=0, sx=1, sy=1){ 
             gl.uniform1i(uUsarTextura, objeto.usarTextura ? 1 : 0);
             gl.uniform1i(uTipoObjeto, objeto.tipoObjeto); 
@@ -290,15 +276,12 @@
 
             identidad(MatrizModelo);
             
-            // 🚩 APLICAR ESCALADO
             if (sx !== 1 || sy !== 1) {
                 escalado(MatrizModelo, sx, sy, 1);
             }
 
             if(rot !== 0) rotacionZ(MatrizModelo, rot);
 
-            // 🚩 CAMBIO CRUCIAL: Dividir el desplazamiento X por el factor de escala X (sx)
-            // Esto compensa el efecto de estiramiento en la posición de traslación.
             traslacion(MatrizModelo, x / sx, y / sy, 0); 
 
             gl.uniformMatrix4fv(uMatrizModelo,false,MatrizModelo);
@@ -309,7 +292,6 @@
         function dibujarTablero(){
             gl.clear(gl.COLOR_BUFFER_BIT); 
 
-            // 1. ENLACE DE TEXTURAS
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(uTexturaFutbol, 0); 
             gl.bindTexture(gl.TEXTURE_2D, codigoTexturaFutbol);
@@ -321,11 +303,9 @@
             gl.activeTexture(gl.TEXTURE2); 
             gl.uniform1i(uTexturaFondo, 2); 
             gl.bindTexture(gl.TEXTURE_2D, codigoTexturaFondo);
-
-            // 2. Dibujar el fondo
+            
             dibujarObjeto(vaoFondo, 0, 0);
 
-            // 3. Dibujar Tablero (Huecos y Botones)
             let b=-3;
             for(let j=0;j<7;j++){
                 let a=2;
@@ -337,7 +317,6 @@
                 b++;
             }
 
-            // 4. Dibujar Fichas fijas
             for(let c=0;c<7;c++)for(let f=0;f<6;f++){
                 if(tablero[c][f] !== 0){
                     let vaoFicha = tablero[c][f] === 1 ? vaoFichaRojo : vaoFichaAzul;
@@ -351,14 +330,13 @@
                 }
             }
 
-            // 5. Dibujar Fichas cayendo (ANIMACIÓN)
             for(let i = fichasAnimando.length - 1; i >= 0; i--){
                 let f = fichasAnimando[i];
                 let vaoFicha = f.jugadorID === 1 ? vaoFichaRojo : vaoFichaAzul;
                 
                 let sx = 1; 
                 if (f.jugadorID === 2) { 
-                    sx = 1.5; // 🚩 Escala X para Basquet cayendo
+                    sx = 1.5; // 
                 }
 
                 f.yActual -= 0.05;
@@ -389,7 +367,6 @@
                 }
             }
 
-            // 6. Animación de victoria en espiral
             if(animandoGanar && vaoCirculoGana){
                 angulo_espiral += 8;
                 radio_gana *= 0.96;
@@ -398,7 +375,7 @@
                 
                 let sx = 1; 
                 if (ganadorID === 2) { 
-                    sx = 1.5; // 🚩 Escala X si el ganador es Basquet
+                    sx = 1.5; // 
                 }
 
                 dibujarObjeto(vaoCirculoGana, x, y, angulo_gana, sx, 1);
@@ -450,10 +427,6 @@
             document.getElementById("reiniciar").style.display="none";
         }
 
-
-        // ====================================================================
-        // === FUNCIÓN PRINCIPAL (MAIN)
-        // ====================================================================
         function main(){
             canvas=document.getElementById("webglcanvas");
             gl=canvas.getContext("webgl2");
@@ -481,7 +454,6 @@
             uJugadorID=gl.getUniformLocation(prog,"uJugadorID");
             uTipoObjeto=gl.getUniformLocation(prog,"uTipoObjeto");
 
-            // Cargar todas las texturas
             codigoTexturaFutbol = gl.createTexture();
             leeLaTextura(gl, "imagenTexturaFutbol", codigoTexturaFutbol);
             codigoTexturaBasquet = gl.createTexture();
@@ -489,10 +461,8 @@
             codigoTexturaFondo = gl.createTexture(); 
             leeLaTextura(gl, "imagenTexturaFondo", codigoTexturaFondo);
 
-            // Creación de VAOs
             vaoCirculoHueco=crearCirculoVAO(0.45, 1, 1, 1, 60); 
             
-            // Fichas: Cuadrados texturizados (0.9x0.9)
             vaoFichaRojo=crearRectanguloTextura(0.9, 0.9, 0, 1); 
             vaoFichaAzul=crearRectanguloTextura(0.9, 0.9, 0, 2); 
             
@@ -505,7 +475,6 @@
             identidad(MatrizVista);
             gl.uniformMatrix4fv(uMatrizVista,false,MatrizVista);
             
-            // Habilitar Blending para la transparencia
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
