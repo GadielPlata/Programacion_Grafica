@@ -87,8 +87,7 @@
             r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
             multiplica(matriz, matriz, r);
         }
-        function escalado(matriz, sx, sy, sz) { // 🚩 Nueva función de escalado
-            let r = new Array(16);
+        function escalado(matriz, sx, sy, sz) { 
             r[0] = sx; r[4] = 0; r[ 8] = 0; r[12] = 0;
             r[1] = 0; r[5] = sy; r[ 9] = 0; r[13] = 0;
             r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
