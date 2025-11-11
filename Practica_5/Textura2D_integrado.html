@@ -1,0 +1,473 @@
+﻿<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Textura 2D en WebGL 2.0</title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+</head>
+<body>
+    <title>Textura 2D en WebGL 2.0</title>
+    <canvas id="webglcanvas" style="border: none;" width="500" height="500"></canvas>
+    <img src="spider2.0.png" id="imagenTextura" hidden />
+    <img src="fondo.jpg" id="imagenFondo" hidden />
+    
+    <script id="vs" type="vertex">
+        #version 300 es
+        precision mediump float;
+        uniform mat4 uMatrizProyeccion;
+        uniform mat4 uMatrizVista;
+        uniform mat4 uMatrizModelo;
+        uniform mat4 uMatrizTextura;
+        layout(location = 0) in vec2 aVertices;
+        layout(location = 1) in vec2 aCoordenadasDeTextura;
+        out vec2 vCoordenadasDeTextura;
+        void main() {
+            vCoordenadasDeTextura = (uMatrizTextura * vec4(aCoordenadasDeTextura, 0.0, 1.0)).xy;  
+            gl_Position = uMatrizProyeccion * uMatrizVista * uMatrizModelo * vec4(aVertices, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fs" type="fragment">
+        #version 300 es
+        precision mediump float;
+        uniform sampler2D uUnidadDeTextura;
+        uniform bool uUsarTextura;
+        uniform vec4 uColor;
+        in vec2 vCoordenadasDeTextura;
+        out vec4 color;
+        void main() {
+            if (uUsarTextura) {
+                color = texture(uUnidadDeTextura, vCoordenadasDeTextura); 
+            } else {
+                color = uColor;
+            }
+        }
+    </script>
+ 
+    <script>
+    "use strict";
+
+    function toRadians(grados) {
+      return grados * Math.PI / 180;
+    };
+
+    function identidad(r) {
+      r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+
+    function multiplica(c, a, b) {
+      let r = new Array(16);
+      let i, j, k;
+      for (i = 0; i < 4; i++){
+        for (j = 0; j < 4; j++){
+          let s = 0;
+          for (k = 0; k < 4; k++)
+            s = s + a[i + k * 4] * b[k + j * 4];
+            r[i + j * 4] = s;
+          }
+        }
+      for (i = 0; i < 16; i++)
+        c[i] = r[i];
+    }
+
+    function traslacion(matriz, tx, ty, tz) {
+      let r = new Array(16);
+      r[0] = 1; r[4] = 0; r[ 8] = 0; r[12] = tx;
+      r[1] = 0; r[5] = 1; r[ 9] = 0; r[13] = ty;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = tz;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    
+    function escalacion(matriz, sx, sy, sz) { 
+      let r = new Array(16);
+      r[0] = sx; r[4] = 0; r[ 8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = sy; r[ 9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function ortho(r, izq, der, abj, arr, cerca, lejos) {
+      r[0] = 2/(der - izq); r[4] = 0; r[ 8] = 0; r[12] = -(der + izq)/(der - izq);
+      r[1] = 0; r[5] = 2/(arr - abj); r[ 9] = 0; r[13] = -(arr + abj)/(arr - abj);
+      r[2] = 0; r[6] = 0; r[10] = -2/(lejos - cerca); r[14] = -(lejos + cerca)/(lejos - cerca);
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+
+    let gl;
+    let programaID;
+    let codigoDeTexturaSprite; 
+    let codigoDeTexturaFondo; 
+
+    let uMatrizProyeccion;
+    let uMatrizVista;
+    let uMatrizModelo;
+    let uUnidadDeTextura;
+    let uMatrizTextura;
+    let uUsarTextura;
+    let uColor;
+
+    let MatrizProyeccion = new Array(16);
+    let MatrizVista = new Array(16);
+    let MatrizModelo = new Array(16);
+    let MatrizTextura = new Array(16);
+
+    let rectanguloVAO;
+    let fondoVAO; 
+    let plataformaVAO;
+
+    let pos_x = 0; 
+    let pos_y = -3.90; 
+
+    let dt = 0; 
+    let dy = 0; 
+    const TAMAÑO_FRAME = 1/3; 
+    let inicio = Date.now();
+    let tiempoMovimiento = 0;
+    const PERIODO_MOVIMIENTO = 0.15; 
+    
+    let estaSaltando = false;
+    let velocidadY = 0;
+    const GRAVEDAD = -10; 
+    const VELOCIDAD_SALTO = 6;
+    const VELOCIDAD_MOVIMIENTO = 5;
+    const POS_SUELO_INICIAL = -3.90;
+    let suelo_actual_y = POS_SUELO_INICIAL;
+    
+    const PLATFORMAS = [
+        { x_min: -4.0, x_max: -2.0, y_top: -3.0, width: 2.5, height: 0.5, pos_x: -3.0 },
+        { x_min: 1.0, x_max: 3.5, y_top: -1.5, width: 2.5, height: 0.5, pos_x: 2.25 },
+        { x_min: -3.0, x_max: -0.5, y_top: 0, width: 2.5, height: 0.5, pos_x: -1.75 },
+        { x_min: 1.5, x_max: 4.0, y_top: 1.5, width: 2.5, height: 0.5, pos_x: 2.75 }
+    ];
+
+    let teclasPresionadas = { left: false, right: false, up: false, down: false };
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') teclasPresionadas.left = true;
+        if (e.key === 'ArrowRight') teclasPresionadas.right = true;
+        if (e.key === 'ArrowUp' && !estaSaltando) teclasPresionadas.up = true;
+        if (e.key === 'ArrowDown') teclasPresionadas.down = true;
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowLeft') teclasPresionadas.left = false;
+        if (e.key === 'ArrowRight') teclasPresionadas.right = false;
+        if (e.key === 'ArrowUp') teclasPresionadas.up = false;
+        if (e.key === 'ArrowDown') teclasPresionadas.down = false;
+    });
+
+    function actualizar(delta_time) {
+        if (teclasPresionadas.left) {
+            pos_x -= VELOCIDAD_MOVIMIENTO * delta_time;
+        }
+        if (teclasPresionadas.right) {
+            pos_x += VELOCIDAD_MOVIMIENTO * delta_time;
+        }
+
+        if (teclasPresionadas.up && !estaSaltando) {
+            estaSaltando = true;
+            velocidadY = VELOCIDAD_SALTO;
+        }
+        
+        if (estaSaltando || pos_y > suelo_actual_y) {
+            velocidadY += GRAVEDAD * delta_time;
+            pos_y += velocidadY * delta_time;
+            
+            let nueva_suelo_y = POS_SUELO_INICIAL;
+            let en_plataforma = false;
+            let margen_personaje = 0.5;
+
+            if (velocidadY <= 0) {
+                for (let i = 0; i < PLATFORMAS.length; i++) {
+                    const p = PLATFORMAS[i];
+                    const borde_inf_personaje = pos_y - 1;
+                    
+                    const colision_x = pos_x + margen_personaje > p.x_min && pos_x - margen_personaje < p.x_max;
+                    const colision_y = borde_inf_personaje <= p.y_top && borde_inf_personaje > p.y_top - (p.height / 2.0); 
+
+                    if (colision_x && colision_y) {
+                        nueva_suelo_y = p.y_top + 1.0; 
+                        en_plataforma = true;
+                        break;
+                    }
+                }
+            }
+
+            if (pos_y <= nueva_suelo_y) { 
+                pos_y = nueva_suelo_y; 
+                estaSaltando = false;
+                velocidadY = 0;
+                suelo_actual_y = nueva_suelo_y;
+            } else if (!en_plataforma && pos_y > POS_SUELO_INICIAL && velocidadY >= 0) {
+                 suelo_actual_y = POS_SUELO_INICIAL;
+            } else if (pos_y > suelo_actual_y && velocidadY < 0 && !en_plataforma) {
+                 suelo_actual_y = POS_SUELO_INICIAL;
+            }
+        } else {
+            let debe_caer = true;
+            if (suelo_actual_y !== POS_SUELO_INICIAL) {
+                for (let i = 0; i < PLATFORMAS.length; i++) {
+                    const p = PLATFORMAS[i];
+                    if (suelo_actual_y === p.y_top + 1.0) {
+                        const esta_sobre_x = pos_x + 0.5 > p.x_min && pos_x - 0.5 < p.x_max;
+                        if (esta_sobre_x) {
+                            debe_caer = false;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                debe_caer = false;
+            }
+
+            if (debe_caer) {
+                estaSaltando = true;
+                velocidadY = 0;
+                suelo_actual_y = POS_SUELO_INICIAL;
+            }
+        }
+
+        pos_x = Math.max(-4, Math.min(4, pos_x));
+        
+        tiempoMovimiento += delta_time;
+
+        if (estaSaltando) {
+            dy = 1/3; 
+        } else if (teclasPresionadas.down) {
+            dy = 0; 
+        } else {
+            dy = 2/3; 
+        }
+
+        if (teclasPresionadas.left || teclasPresionadas.right) {
+            if (tiempoMovimiento >= PERIODO_MOVIMIENTO) {
+                tiempoMovimiento = 0;
+                dt += TAMAÑO_FRAME;
+                if (dt >= 1.0) dt = 0; 
+            }
+        } else {
+            dt = 0;
+        }
+    }
+
+    function dibuja() {
+        let fin = Date.now(); 
+        let duracion = fin - inicio;
+        inicio = fin;
+        let delta_time = duracion / 1000.0;
+
+        actualizar(delta_time);
+
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform1i(uUsarTextura, true); 
+        identidad(MatrizModelo); 
+        gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+        identidad(MatrizTextura); 
+        gl.uniformMatrix4fv(uMatrizTextura, false, MatrizTextura);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(uUnidadDeTextura, 0);
+        gl.bindTexture(gl.TEXTURE_2D, codigoDeTexturaFondo); 
+        gl.bindVertexArray(fondoVAO); 
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+        gl.bindVertexArray(null);
+
+        gl.uniform1i(uUsarTextura, false); 
+        gl.uniform4f(uColor, 0.5, 0.5, 0.5, 1.0);
+
+        gl.bindVertexArray(plataformaVAO); 
+        for (let i = 0; i < PLATFORMAS.length; i++) {
+            const p = PLATFORMAS[i];
+            identidad(MatrizModelo); 
+            traslacion(MatrizModelo, p.pos_x, p.y_top - p.height / 2.0 + 0.25, 0); 
+            escalacion(MatrizModelo, p.width / 2.0, p.height / 2.0, 1.0);
+            gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+            gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+        }
+        gl.bindVertexArray(null);
+
+        gl.uniform1i(uUsarTextura, true); 
+        identidad(MatrizModelo); 
+        traslacion(MatrizModelo, pos_x, pos_y, 0); 
+
+        if (teclasPresionadas.left && !teclasPresionadas.right) {
+            escalacion(MatrizModelo, -1, 1, 1);
+        } else if (teclasPresionadas.right && !teclasPresionadas.left) {
+             escalacion(MatrizModelo, 1, 1, 1);
+        } else {
+             escalacion(MatrizModelo, 1, 1, 1);
+        }
+        gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+
+        identidad(MatrizTextura);
+        traslacion(MatrizTextura, dt, dy, 0); 
+        gl.uniformMatrix4fv(uMatrizTextura, false, MatrizTextura);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(uUnidadDeTextura, 0);
+        gl.bindTexture(gl.TEXTURE_2D, codigoDeTexturaSprite);
+        
+        gl.bindVertexArray(rectanguloVAO);
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+        gl.bindVertexArray(null);
+
+        requestAnimationFrame(dibuja);
+    }
+
+    function main() {
+        let canvas = document.getElementById("webglcanvas");
+        gl = canvas.getContext("webgl2");
+        if (!gl) {
+            document.write("WebGL 2.0 no está disponible en tu navegador");
+            return;
+        }
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        let shaderDeVertice = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(shaderDeVertice, document.getElementById("vs").text.trim());
+        gl.compileShader(shaderDeVertice);
+
+        let shaderDeFragmento = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(shaderDeFragmento, document.getElementById("fs").text.trim());
+        gl.compileShader(shaderDeFragmento);
+
+        programaID = gl.createProgram();
+        gl.attachShader(programaID, shaderDeVertice); 
+        gl.attachShader(programaID, shaderDeFragmento);
+        gl.linkProgram(programaID);
+        if (!gl.getProgramParameter(programaID, gl.LINK_STATUS)) {
+            console.error("Error al enlazar el programa:", gl.getProgramInfoLog(programaID));
+            console.error("Error en fragment shader:", gl.getShaderInfoLog(shaderDeFragmento));
+            return; 
+        }
+
+        gl.useProgram(programaID);
+
+        uMatrizProyeccion = gl.getUniformLocation(programaID, "uMatrizProyeccion");
+        uMatrizVista = gl.getUniformLocation(programaID, "uMatrizVista");
+        uMatrizModelo = gl.getUniformLocation(programaID, "uMatrizModelo");
+        uUnidadDeTextura = gl.getUniformLocation(programaID, "uUnidadDeTextura");
+        uMatrizTextura = gl.getUniformLocation(programaID, "uMatrizTextura");
+        uUsarTextura = gl.getUniformLocation(programaID, "uUsarTextura");
+        uColor = gl.getUniformLocation(programaID, "uColor");
+
+        let verticesSprite = [
+            -1, -1, 
+            1, -1, 
+            1, 1, 
+            -1, 1, 
+        ];
+
+        let coord_texturaSprite = [
+            0, 0,
+            1/3, 0,
+            1/3, 1/3,
+            0, 1/3,
+        ];
+
+        rectanguloVAO = gl.createVertexArray();
+        gl.bindVertexArray(rectanguloVAO);
+
+        let codigoVerticesSprite = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, codigoVerticesSprite);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verticesSprite), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+        let codigoCoordenadasDeTexturaSprite = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, codigoCoordenadasDeTexturaSprite);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coord_texturaSprite), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+
+        let verticesFondo = [
+            -5, -5,
+            5, -5,
+            5, 5,
+            -5, 5,
+        ];
+
+        let coord_texturaFondo = [
+            0, 0, 
+            1, 0, 
+            1, 1, 
+            0, 1, 
+        ];
+
+        fondoVAO = gl.createVertexArray();
+        gl.bindVertexArray(fondoVAO);
+
+        let codigoVerticesFondo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, codigoVerticesFondo);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verticesFondo), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+        let codigoCoordenadasDeTexturaFondo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, codigoCoordenadasDeTexturaFondo);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coord_texturaFondo), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+
+        plataformaVAO = gl.createVertexArray();
+        gl.bindVertexArray(plataformaVAO);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, codigoVerticesSprite);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        
+        let dummyCoordTextura = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, dummyCoordTextura);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0, 1,0, 1,1, 0,1]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+        
+        gl.bindVertexArray(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        
+        codigoDeTexturaSprite = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, codigoDeTexturaSprite);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        let imagenSprite = document.getElementById("imagenTextura");
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imagenSprite);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); 
+        gl.bindTexture(gl.TEXTURE_2D, null);
+
+        codigoDeTexturaFondo = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, codigoDeTexturaFondo);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        let imagenFondo = document.getElementById("imagenFondo");
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imagenFondo);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); 
+        gl.bindTexture(gl.TEXTURE_2D, null);
+
+        ortho(MatrizProyeccion, -5, 5, -5, 5, -5, 5);
+        gl.uniformMatrix4fv(uMatrizProyeccion, false, MatrizProyeccion);
+
+        identidad(MatrizVista);
+        gl.uniformMatrix4fv(uMatrizVista, false, MatrizVista); 
+        
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        dibuja();
+    }
+
+    window.onload = main;
+    </script>
+</body>
+</html>
