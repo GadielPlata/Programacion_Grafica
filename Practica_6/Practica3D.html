@@ -1,0 +1,891 @@
+﻿<!DOCTYPE HTML>
+<html>
+
+<head>
+  <style>
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+        margin: 0px;
+        border: 0;
+        overflow: hidden;
+        display: block;
+    }
+
+    /* Contenedor Izquierdo (Mantiene Malla, Movimiento, Rotación, Zoom) */
+    #gui-container {
+        position: absolute;
+        top: 10px;
+        left: 10px; /* Se queda a la izquierda */
+        font-family: sans-serif;
+        z-index: 10;
+        width: 170px;
+    }
+
+    /* Nuevo Contenedor Derecho (Solo para el Modelo) */
+    #gui-container-right {
+        position: absolute;
+        top: 10px;
+        right: 10px; /* Se mueve a la derecha */
+        font-family: sans-serif;
+        z-index: 10;
+        width: 170px;
+    }
+
+    /* Estilos generales para los grupos de control */
+    #gui-movement,
+    .controls-group,
+    #gui-modelos {
+        padding: 10px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 5px;
+        margin-bottom: 10px;
+        width: 150px;
+        box-sizing: border-box;
+    }
+
+    #gui-modelos button,
+    .controls-group button,
+    #gui-malla button {
+        display: block;
+        margin-bottom: 5px;
+        padding: 8px;
+        width: 100%;
+        cursor: pointer;
+    }
+
+    #gui-movement {
+        padding: 10px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 5px;
+        width: 150px;
+        box-sizing: border-box;
+    }
+
+    .d-pad-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+        gap: 2px;
+        justify-items: center;
+        align-items: center;
+        background-color: rgba(0, 0, 0, 0.1);
+        padding: 5px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+
+    .d-pad-container button {
+        padding: 8px 12px;
+        width: 100%;
+        box-sizing: border-box;
+        cursor: pointer;
+        font-weight: bold;
+        text-align: center;
+    }
+
+    #btn-up {
+        grid-area: 1 / 2 / 2 / 3;
+    }
+
+    #btn-rot-left {
+        grid-area: 2 / 1 / 3 / 2;
+    }
+
+    #btn-front {
+        grid-area: 2 / 2 / 3 / 3;
+    }
+
+    #btn-rot-right {
+        grid-area: 2 / 3 / 3 / 4;
+    }
+
+    #btn-down {
+        grid-area: 3 / 2 / 4 / 3;
+    }
+
+    .controls-group h3,
+    #gui-modelos h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+</style>
+  <title>Visor 3D Interactivo en WebGL 2.0</title>
+
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+    <canvas id="webglcanvas" style="border: none;" width="500" height="500"></canvas>
+
+    <div id="gui-container">
+        
+        <div id="gui-malla" class="controls-group">
+            <button id="btn-malla">Malla / Color</button>
+        </div>
+
+        <div id="gui-movement">
+            <h3>Movimiento</h3>
+            <div class="d-pad-container">
+                <button id="btn-up">▲</button>
+                <button id="btn-rot-left">◀</button>
+                <button id="btn-front">●</button>
+                <button id="btn-rot-right">►</button>
+                <button id="btn-down">▼</button>
+            </div>
+        </div>
+        
+        <div class="controls-group">
+            <h3>Rotación Continua</h3>
+            <button id="btn-start-rot">GIRAR</button>
+            <button id="btn-stop-rot">PARAR</button>
+        </div>
+
+        <div class="controls-group">
+            <h3>Zoom</h3>
+            <button id="btn-zoom-in">Zoom +</button>
+            <button id="btn-zoom-out">Zoom -</button>
+        </div>
+    </div>
+    
+    <div id="gui-container-right">
+        <div id="gui-modelos" class="controls-group">
+            <h3>Modelo</h3>
+            <button id="btn-house">Casa</button>
+            <button id="btn-car">Auto</button>
+            <button id="btn-dog">Perro</button>
+        </div>
+    </div>
+
+  <script id="vs" type="vertex">
+        #version 300 es
+        uniform mat4 uMatrizProyeccion;
+        uniform mat4 uMatrizVista;
+        uniform mat4 uMatrizModelo;
+        layout(location = 0) in vec3 aVertices;
+        layout(location = 1) in vec4 aColores;
+        out vec4 vColores;
+        void main() {
+            vColores = aColores;
+            gl_Position = uMatrizProyeccion * uMatrizVista * uMatrizModelo * vec4(aVertices, 1.0);
+        }
+    </script>
+
+  <script id="fs" type="fragment">
+        #version 300 es
+        precision highp float;
+        in vec4 vColores;
+        uniform bool uModoMalla;
+        uniform vec4 uColorMalla;
+        out vec4 color;
+        void main() {
+            if (uModoMalla) {
+                color = uColorMalla;
+            } else {
+                color = vColores;
+            }
+        }
+    </script>
+
+  <script>
+    "use strict";
+
+    function parseMTL(mtlText) {
+      const materials = {};
+      let currentMaterial = null;
+      const lines = mtlText.split('\n');
+      for (let line of lines) {
+        line = line.trim();
+        const parts = line.split(/\s+/);
+        if (parts[0] === 'newmtl') {
+          currentMaterial = parts[1];
+          materials[currentMaterial] = [1, 1, 1, 1];
+        } else if (parts[0] === 'Kd' && currentMaterial) {
+          materials[currentMaterial] = [
+            parseFloat(parts[1]),
+            parseFloat(parts[2]),
+            parseFloat(parts[3]),
+            1.0
+          ];
+        }
+      }
+      return materials;
+    }
+
+    function parseOBJ(objText, materials) {
+      const verticesRaw = [];
+      const finalVertices = [];
+      const finalColors = [];
+      const finalIndices = [];
+      let currentColor = [0.8, 0.8, 0.8, 1.0];
+      let indexCounter = 0;
+      const lines = objText.split('\n');
+
+      for (let line of lines) {
+        line = line.trim();
+        const parts = line.split(/\s+/);
+
+        if (parts[0] === 'v') {
+          verticesRaw.push([
+            parseFloat(parts[1]),
+            parseFloat(parts[2]),
+            parseFloat(parts[3])
+          ]);
+        } else if (parts[0] === 'usemtl') {
+          const matName = parts[1];
+          if (materials[matName]) {
+            currentColor = materials[matName];
+          } else {
+            currentColor = [0.8, 0.8, 0.8, 1.0];
+          }
+        } else if (parts[0] === 'f') {
+          const p1 = parseInt(parts[1].split('/')[0]) - 1;
+          const p2 = parseInt(parts[2].split('/')[0]) - 1;
+          const p3 = parseInt(parts[3].split('/')[0]) - 1;
+
+          finalVertices.push(...verticesRaw[p1]);
+          finalColors.push(...currentColor);
+          finalIndices.push(indexCounter++);
+
+          finalVertices.push(...verticesRaw[p2]);
+          finalColors.push(...currentColor);
+          finalIndices.push(indexCounter++);
+
+          finalVertices.push(...verticesRaw[p3]);
+          finalColors.push(...currentColor);
+          finalIndices.push(indexCounter++);
+
+          if (parts.length === 5) {
+            const p4 = parseInt(parts[4].split('/')[0]) - 1;
+            finalVertices.push(...verticesRaw[p1]);
+            finalColors.push(...currentColor);
+            finalIndices.push(indexCounter++);
+            finalVertices.push(...verticesRaw[p3]);
+            finalColors.push(...currentColor);
+            finalIndices.push(indexCounter++);
+            finalVertices.push(...verticesRaw[p4]);
+            finalColors.push(...currentColor);
+            finalIndices.push(indexCounter++);
+          }
+        }
+      }
+      return {
+        vertices: finalVertices,
+        colors: finalColors,
+        indices: finalIndices
+      };
+    }
+
+    function toRadians(grados) {
+      return grados * Math.PI / 180;
+    };
+    function identidad(r) {
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+    function traslacion(matriz, tx, ty, tz) {
+      let r = new Array(16);
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = tx;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = ty;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = tz;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function escalacion(matriz, sx, sy, sz) {
+      let r = new Array(16);
+      r[0] = sx; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = sy; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionX(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = c; r[9] = -s; r[13] = 0;
+      r[2] = 0; r[6] = s; r[10] = c; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionY(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = c; r[4] = 0; r[8] = s; r[12] = 0;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = 0;
+      r[2] = -s; r[6] = 0; r[10] = c; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionZ(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = c; r[4] = -s; r[8] = 0; r[12] = 0;
+      r[1] = s; r[5] = c; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function ortho(r, izq, der, abj, arr, cerca, lejos) {
+      r[0] = 2 / (der - izq); r[4] = 0; r[8] = 0; r[12] = -(der + izq) / (der - izq);
+      r[1] = 0; r[5] = 2 / (arr - abj); r[9] = 0; r[13] = -(arr + abj) / (arr - abj);
+      r[2] = 0; r[6] = 0; r[10] = -2 / (lejos - cerca); r[14] = -(lejos + cerca) / (lejos - cerca);
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+    function multiplica(c, a, b) {
+      let r = new Array(16);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          let s = 0;
+          for (let k = 0; k < 4; k++)
+            s += a[i + k * 4] * b[k + j * 4];
+          r[i + j * 4] = s;
+        }
+      }
+      for (let i = 0; i < 16; i++)
+        c[i] = r[i];
+    }
+
+    let gl, canvas;
+    let programaID;
+    let houseVAOs = {};
+    let carVAO = null;
+    let carNumIndices = 0;
+    let dogVAO = null;
+    let dogNumIndices = 0;
+    let currentModel = 'house';
+    let traslacionX = 0;
+    let traslacionY = 0;
+    let rotX = 0;
+    let rotY = 0;
+    let antX;
+    let antY;
+    let boton_izq_presionado = false;
+    let uMatrizProyeccion;
+    let uMatrizVista;
+    let uMatrizModelo;
+    let uModoMallaLoc;
+    let uColorMallaLoc;
+
+    let MatrizProyeccion = new Array(16);
+    let MatrizVista = new Array(16);
+    let MatrizModelo = new Array(16);
+
+    let zoom = 1.0;
+    let modoMalla = false;
+
+    // INICIO: VARIABLES DE ROTACIÓN AUTOMÁTICA AÑADIDAS
+    let rotacionAutomaticaActiva = false;
+    let anguloRotacionAuto = 0;
+    let ultimaVez = 0;
+    // FIN: VARIABLES DE ROTACIÓN AUTOMÁTICA AÑADIDAS
+
+
+    function mouseDown(event) {
+      let posx, posy;
+      if (event.x != undefined && event.y != undefined) { posx = event.x; posy = event.y; }
+      else { posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft; posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop; }
+      posx -= canvas.offsetLeft;
+      posy -= canvas.offsetTop;
+      antX = posx;
+      antY = posy;
+      boton_izq_presionado = true;
+      return false;
+    }
+    function mouseUp() { boton_izq_presionado = false; }
+    function mouseMove(event) {
+      if (!boton_izq_presionado) return false;
+      let posx, posy;
+      if (event.x != undefined && event.y != undefined) { posx = event.x; posy = event.y; }
+      else { posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft; posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop; }
+      posx -= canvas.offsetLeft;
+      posy -= canvas.offsetTop;
+
+      let dx = posx - antX;
+      let dy = posy - antY;
+
+      traslacionX += dx * 0.01;
+      traslacionY -= dy * 0.01;
+
+      antX = posx;
+      antY = posy;
+    }
+    function mov(action) {
+      const rotStep = 5;
+
+      switch (action) {
+        case 'front':
+          rotX = 0;
+          rotY = 0;
+          traslacionX = 0;
+          traslacionY = 0;
+          zoom = 1.0;
+          escal();
+          break;
+        case 'rot-right':
+          rotX += rotStep;
+          break;
+        case 'rot-left':
+          rotX -= rotStep;
+          break;
+        case 'up':
+          rotY -= rotStep;
+          break;
+        case 'down':
+          rotY += rotStep;
+          break;
+      }
+    }
+
+    function fZoom(dir) {
+      const dzoom = 0.2;
+      if (dir === 'in') {
+        zoom = Math.max(0.5, zoom - dzoom);
+      } else if (dir === 'out') {
+        zoom = Math.min(10.0, zoom + dzoom);
+      }
+      escal();
+    }
+
+    function escal() {
+      let scaleFactor;
+      if (currentModel === 'car') {
+        scaleFactor = 2.0;
+      } else if (currentModel === 'dog') {
+        scaleFactor = 3.0;
+      } else {
+        scaleFactor = 5.0;
+      }
+      const scale = scaleFactor * zoom;
+      ortho(MatrizProyeccion, -scale * gl.canvas.width / gl.canvas.height, scale * gl.canvas.width / gl.canvas.height, -scale, scale, -50, 50);
+      gl.uniformMatrix4fv(uMatrizProyeccion, false, MatrizProyeccion);
+    }
+
+    function crearIndicesMalla(indicesTriangles) {
+      let indicesLines = [];
+      for (let i = 0; i < indicesTriangles.length; i += 3) {
+        const v1 = indicesTriangles[i];
+        const v2 = indicesTriangles[i + 1];
+        const v3 = indicesTriangles[i + 2];
+
+        indicesLines.push(v1, v2);
+        indicesLines.push(v2, v3);
+        indicesLines.push(v3, v1);
+      }
+      return indicesLines;
+    }
+
+    function crearVAO(vertices, colores, indicesTriangles, indicesLines) {
+      let vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+
+      let vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+      let cbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, cbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colores), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+
+      let iboTriangles = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iboTriangles);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicesTriangles), gl.STATIC_DRAW);
+
+      let iboLines = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iboLines);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicesLines), gl.STATIC_DRAW);
+
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+      return {
+        vao: vao,
+        iboTriangles: iboTriangles,
+        iboLines: iboLines,
+        countTriangles: indicesTriangles.length,
+        countLines: indicesLines.length
+      };
+    }
+
+    function crearCarVAO(modelData) {
+      const indicesLines = crearIndicesMalla(modelData.indices);
+      return crearVAO(modelData.vertices, modelData.colors, modelData.indices, indicesLines);
+    }
+
+    function crearDogVAO(modelData) {
+      const indicesLines = crearIndicesMalla(modelData.indices);
+      return crearVAO(modelData.vertices, modelData.colors, modelData.indices, indicesLines);
+    }
+
+
+    function dibujarComponente(componente) {
+      const vaoData = houseVAOs[componente];
+      gl.bindVertexArray(vaoData.vao);
+
+      if (modoMalla) {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboLines);
+        gl.drawElements(gl.LINES, vaoData.countLines, gl.UNSIGNED_SHORT, 0);
+      } else {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboTriangles);
+        gl.drawElements(gl.TRIANGLES, vaoData.countTriangles, gl.UNSIGNED_SHORT, 0);
+      }
+    }
+    function dibuja(tiempoActual) {
+      if (!ultimaVez) ultimaVez = tiempoActual;
+      const delta = tiempoActual - ultimaVez;
+      ultimaVez = tiempoActual;
+
+      if (rotacionAutomaticaActiva) {
+        anguloRotacionAuto = (anguloRotacionAuto + delta * 0.05) % 360;
+      }
+
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      identidad(MatrizModelo);
+      traslacion(MatrizModelo, traslacionX, traslacionY, 0);
+
+      if (rotacionAutomaticaActiva) {
+        rotacionY(MatrizModelo, anguloRotacionAuto);
+      } else {
+        rotacionY(MatrizModelo, rotX);
+        rotacionX(MatrizModelo, rotY);
+      }
+
+      gl.uniform1i(uModoMallaLoc, modoMalla);
+      gl.uniform4fv(uColorMallaLoc, [1.0, 1.0, 1.0, 1.0]);
+
+      if (currentModel === 'house') {
+        escalacion(MatrizModelo, 2, 2, 2);
+        gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+
+        dibujarComponente('base');
+        dibujarComponente('techo');
+        dibujarComponente('puerta');
+        dibujarComponente('ventanas');
+        dibujarComponente('chimenea');
+      } else if (currentModel === 'car') {
+        traslacion(MatrizModelo, 0, -1.0, 0);
+        escalacion(MatrizModelo, 1.0, 1.0, 1.0);
+        gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+
+        if (carVAO) {
+          gl.bindVertexArray(carVAO.vao);
+          if (modoMalla) {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, carVAO.iboLines);
+            gl.drawElements(gl.LINES, carVAO.countLines, gl.UNSIGNED_SHORT, 0);
+          } else {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, carVAO.iboTriangles);
+            gl.drawElements(gl.TRIANGLES, carVAO.countTriangles, gl.UNSIGNED_SHORT, 0);
+          }
+          gl.bindVertexArray(null);
+        }
+      } else if (currentModel === 'dog') {
+        traslacion(MatrizModelo, 0, -1.0, 0);
+        escalacion(MatrizModelo, 1.0, 1.0, 1.0);
+        gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+
+        if (dogVAO) {
+          gl.bindVertexArray(dogVAO.vao);
+          if (modoMalla) {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, dogVAO.iboLines);
+            gl.drawElements(gl.LINES, dogVAO.countLines, gl.UNSIGNED_SHORT, 0);
+          } else {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, dogVAO.iboTriangles);
+            gl.drawElements(gl.TRIANGLES, dogVAO.countTriangles, gl.UNSIGNED_SHORT, 0);
+          }
+          gl.bindVertexArray(null);
+        }
+      }
+
+      gl.bindVertexArray(null);
+      requestAnimationFrame(dibuja);
+    }
+
+    async function main() {
+      canvas = document.getElementById("webglcanvas");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      gl = canvas.getContext("webgl2");
+      if (!gl) {
+        document.write("WebGL 2.0 no está disponible en tu navegador");
+        return;
+      }
+
+      canvas.addEventListener("mousedown", mouseDown, false);
+      canvas.addEventListener("mouseup", mouseUp, false);
+      canvas.addEventListener("mouseout", mouseUp, false);
+      canvas.addEventListener("mousemove", mouseMove, false);
+
+      document.getElementById("btn-front").addEventListener("click", () => mov('front'));
+      document.getElementById("btn-rot-right").addEventListener("click", () => mov('rot-right'));
+      document.getElementById("btn-rot-left").addEventListener("click", () => mov('rot-left'));
+      document.getElementById("btn-up").addEventListener("click", () => mov('up'));
+      document.getElementById("btn-down").addEventListener("click", () => mov('down'));
+
+      // INICIO: LISTENERS DE ROTACIÓN AUTOMÁTICA AÑADIDOS
+      document.getElementById("btn-start-rot").addEventListener("click", () => {
+        rotacionAutomaticaActiva = true;
+        ultimaVez = performance.now();
+      });
+
+      document.getElementById("btn-stop-rot").addEventListener("click", () => {
+        rotacionAutomaticaActiva = false;
+        // Transfiere la rotación actual a la rotación manual
+        rotX = anguloRotacionAuto;
+      });
+      // FIN: LISTENERS DE ROTACIÓN AUTOMÁTICA AÑADIDOS
+
+      document.getElementById("btn-zoom-in").addEventListener("click", () => fZoom('in'));
+      document.getElementById("btn-zoom-out").addEventListener("click", () => fZoom('out'));
+
+      document.getElementById("btn-house").addEventListener("click", () => {
+        currentModel = 'house';
+        mov('front');
+      });
+      document.getElementById("btn-car").addEventListener("click", () => {
+        currentModel = 'car';
+        mov('front');
+      });
+      document.getElementById("btn-dog").addEventListener("click", () => {
+        currentModel = 'dog';
+        mov('front');
+      });
+
+      document.getElementById("btn-malla").addEventListener("click", () => {
+        modoMalla = !modoMalla;
+        gl.lineWidth(modoMalla ? 2.0 : 1.0);
+      });
+
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      let shaderDeVertice = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(shaderDeVertice, document.getElementById("vs").text.trim());
+      gl.compileShader(shaderDeVertice);
+
+      let shaderDeFragmento = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(shaderDeFragmento, document.getElementById("fs").text.trim());
+      gl.compileShader(shaderDeFragmento);
+
+      programaID = gl.createProgram();
+      gl.attachShader(programaID, shaderDeVertice);
+      gl.attachShader(programaID, shaderDeFragmento);
+      gl.linkProgram(programaID);
+      gl.useProgram(programaID);
+
+      uMatrizProyeccion = gl.getUniformLocation(programaID, "uMatrizProyeccion");
+      uMatrizVista = gl.getUniformLocation(programaID, "uMatrizVista");
+      uMatrizModelo = gl.getUniformLocation(programaID, "uMatrizModelo");
+      uModoMallaLoc = gl.getUniformLocation(programaID, "uModoMalla");
+      uColorMallaLoc = gl.getUniformLocation(programaID, "uColorMalla");
+      let baseVertices = [
+        -1, 1, 1, 1, 1, 1, 1, -1, 1, -1, -1, 1,
+        -1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, -1,
+        -1, -1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1,
+        1, 1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1,
+        -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1
+      ];
+      let baseColores = [
+        0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0,
+        0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0,
+        0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0,
+        0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0,
+        0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0, 0.6, 0.4, 0.2, 1.0
+      ];
+      let baseIndices = [
+        0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15, 16, 17, 18, 16, 18, 19
+      ];
+
+      let techoVertices = [
+        -1, 1, 1, 1, 1, 1, 0, 2, 1,
+        1, 1, -1, -1, 1, -1, 0, 2, -1,
+        1, 1, 1, 1, 1, -1, 0, 2, -1, 0, 2, 1,
+        -1, 1, -1, -1, 1, 1, 0, 2, 1, 0, 2, -1
+      ];
+      let techoColores = [
+        0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0,
+        0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0,
+        0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0,
+        0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0, 0.8, 0.0, 0.0, 1.0
+      ];
+      let techoIndices = [
+        0, 1, 2,
+        3, 4, 5,
+        6, 7, 8, 6, 8, 9,
+        10, 11, 12, 10, 12, 13
+      ];
+
+      const doorDepth = 0.08;
+      let puertaVertices = [
+        -0.3, 0.5, 1.0 + doorDepth / 2, 0.3, 0.5, 1.0 + doorDepth / 2, 0.3, -1, 1.0 + doorDepth / 2, -0.3, -1, 1.0 + doorDepth / 2,
+        -0.3, 0.5, 1.0 - doorDepth / 2, 0.3, 0.5, 1.0 - doorDepth / 2, 0.3, -1, 1.0 - doorDepth / 2, -0.3, -1, 1.0 - doorDepth / 2,
+      ];
+      let puertaColores = [
+        0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0,
+        0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0, 0.1, 0.1, 0.1, 1.0,
+        0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0,
+        0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0,
+        0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0,
+        0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0, 0.05, 0.05, 0.05, 1.0
+      ];
+      let puertaIndices = [
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        0, 4, 5, 0, 5, 1,
+        3, 7, 6, 3, 6, 2,
+        0, 3, 7, 0, 7, 4,
+        1, 2, 6, 1, 6, 5
+      ];
+      const windowDepth = 0.08;
+      let ventanasVertices = [];
+      let ventanasColores = [];
+      let ventanasIndices = [];
+      function addWindowPanel(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, depth, normalAxis, color, startIndex) {
+        let vertices = [];
+        let colors = [];
+        let indices = [];
+        let dx = 0, dy = 0, dz = 0;
+        if (normalAxis === 'x') dx = depth / 2;
+        if (normalAxis === '-x') dx = -depth / 2;
+        if (normalAxis === 'z') dz = depth / 2;
+        if (normalAxis === '-z') dz = -depth / 2;
+        vertices.push(x1 + dx, y1 + dy, z1 + dz);
+        vertices.push(x2 + dx, y2 + dy, z2 + dz);
+        vertices.push(x3 + dx, y3 + dy, z3 + dz);
+        vertices.push(x4 + dx, y4 + dy, z4 + dz);
+        vertices.push(x1 - dx, y1 - dy, z1 - dz);
+        vertices.push(x2 - dx, y2 - dy, z2 - dz);
+        vertices.push(x3 - dx, y3 - dy, z3 - dz);
+        vertices.push(x4 - dx, y4 - dy, z4 - dz);
+        for (let i = 0; i < 8; i++) { colors.push(color[0], color[1], color[2], color[3]); }
+        indices.push(startIndex + 0, startIndex + 1, startIndex + 2, startIndex + 0, startIndex + 2, startIndex + 3);
+        indices.push(startIndex + 4, startIndex + 5, startIndex + 6, startIndex + 4, startIndex + 6, startIndex + 7);
+        if (normalAxis === 'x' || normalAxis === '-x') {
+          indices.push(startIndex + 0, startIndex + 4, startIndex + 7, startIndex + 0, startIndex + 7, startIndex + 3);
+          indices.push(startIndex + 1, startIndex + 5, startIndex + 6, startIndex + 1, startIndex + 6, startIndex + 2);
+          indices.push(startIndex + 0, startIndex + 1, startIndex + 5, startIndex + 0, startIndex + 5, startIndex + 4);
+          indices.push(startIndex + 3, startIndex + 2, startIndex + 6, startIndex + 3, startIndex + 6, startIndex + 7);
+        } else if (normalAxis === 'z' || normalAxis === '-z') {
+          indices.push(startIndex + 0, startIndex + 4, startIndex + 7, startIndex + 0, startIndex + 7, startIndex + 3);
+          indices.push(startIndex + 1, startIndex + 5, startIndex + 6, startIndex + 1, startIndex + 6, startIndex + 2);
+          indices.push(startIndex + 0, startIndex + 1, startIndex + 5, startIndex + 0, startIndex + 5, startIndex + 4);
+          indices.push(startIndex + 3, startIndex + 2, startIndex + 6, startIndex + 3, startIndex + 6, startIndex + 7);
+        }
+        ventanasVertices.push(...vertices);
+        ventanasColores.push(...colors);
+        ventanasIndices.push(...indices);
+      }
+      const windowColor = [0.0, 0.8, 1.0, 1.0];
+      let vertexOffset = 0;
+      addWindowPanel(1, 0.5, 0.5, 1, 0.5, -0.5, 1, -0.5, -0.5, 1, -0.5, 0.5, windowDepth, 'x', windowColor, vertexOffset);
+      vertexOffset += 8;
+      addWindowPanel(-1, 0.5, -0.5, -1, 0.5, 0.5, -1, -0.5, 0.5, -1, -0.5, -0.5, windowDepth, '-x', windowColor, vertexOffset);
+      vertexOffset += 8;
+      addWindowPanel(0.5, 0.5, -1, -0.5, 0.5, -1, -0.5, -0.5, -1, 0.5, -0.5, -1, windowDepth, '-z', windowColor, vertexOffset);
+      let chimneyVertices = [];
+      let chimneyColors = [];
+      let chimneyIndices = [];
+      const chimneyColor = [0.4, 0.4, 0.4, 1.0];
+      const chimneyRadius = 0.15;
+      const chimneyHeight = 0.7;
+      const chimneySegments = 16;
+      const chimneyOffsetY = 1 + (chimneyHeight / 2);
+      const chimneyOffsetX = 0.6;
+      const chimneyOffsetZ = -0.5;
+      const centerTopIndex = 0;
+      const centerBottomIndex = 1;
+      chimneyVertices.push(0 + chimneyOffsetX, chimneyHeight / 2 + chimneyOffsetY, 0 + chimneyOffsetZ);
+      chimneyColors.push(...chimneyColor);
+      chimneyVertices.push(0 + chimneyOffsetX, -chimneyHeight / 2 + chimneyOffsetY, 0 + chimneyOffsetZ);
+      chimneyColors.push(...chimneyColor);
+      for (let i = 0; i < chimneySegments; i++) {
+        const angle = i * 2 * Math.PI / chimneySegments;
+        const x = chimneyRadius * Math.cos(angle);
+        const z = chimneyRadius * Math.sin(angle);
+        let topIndex = 2 + 2 * i;
+        let bottomIndex = 3 + 2 * i;
+        chimneyVertices.push(x + chimneyOffsetX, chimneyHeight / 2 + chimneyOffsetY, z + chimneyOffsetZ);
+        chimneyColors.push(...chimneyColor);
+        chimneyVertices.push(x + chimneyOffsetX, -chimneyHeight / 2 + chimneyOffsetY, z + chimneyOffsetZ);
+        chimneyColors.push(...chimneyColor);
+        let nextTopIndex = 2 + 2 * ((i + 1) % chimneySegments);
+        let nextBottomIndex = 3 + 2 * ((i + 1) % chimneySegments);
+        chimneyIndices.push(centerTopIndex, topIndex, nextTopIndex);
+        chimneyIndices.push(centerBottomIndex, nextBottomIndex, bottomIndex);
+        chimneyIndices.push(topIndex, bottomIndex, nextBottomIndex);
+        chimneyIndices.push(topIndex, nextBottomIndex, nextTopIndex);
+      }
+
+      const baseIndicesLines = crearIndicesMalla(baseIndices);
+      const techoIndicesLines = crearIndicesMalla(techoIndices);
+      const puertaIndicesLines = crearIndicesMalla(puertaIndices);
+      const ventanasIndicesLines = crearIndicesMalla(ventanasIndices);
+      const chimneyIndicesLines = crearIndicesMalla(chimneyIndices);
+
+      houseVAOs.base = crearVAO(baseVertices, baseColores, baseIndices, baseIndicesLines);
+      houseVAOs.techo = crearVAO(techoVertices, techoColores, techoIndices, techoIndicesLines);
+      houseVAOs.puerta = crearVAO(puertaVertices, puertaColores, puertaIndices, puertaIndicesLines);
+      houseVAOs.ventanas = crearVAO(ventanasVertices, ventanasColores, ventanasIndices, ventanasIndicesLines);
+      houseVAOs.chimenea = crearVAO(chimneyVertices, chimneyColors, chimneyIndices, chimneyIndicesLines);
+
+      try {
+        const mtlResponse = await fetch('SportsCar2.mtl');
+        const mtlText = await mtlResponse.text();
+        const materials = parseMTL(mtlText);
+
+        const objResponse = await fetch('SportsCar2.obj');
+        const objText = await objResponse.text();
+        const modelData = parseOBJ(objText, materials);
+
+        carVAO = crearCarVAO(modelData);
+        carNumIndices = modelData.indices.length;
+
+      } catch (error) {
+        console.error("Error cargando el modelo del auto:", error);
+      }
+
+      // Carga y creación del modelo del Perro (Husky)
+      try {
+        const mtlResponse = await fetch('Husky.mtl');
+        const mtlText = await mtlResponse.text();
+        const materials = parseMTL(mtlText);
+
+        const objResponse = await fetch('Husky.obj');
+        const objText = await objResponse.text();
+        const modelData = parseOBJ(objText, materials);
+
+        dogVAO = crearDogVAO(modelData);
+        dogNumIndices = modelData.indices.length;
+
+      } catch (error) {
+        console.error("Error cargando el modelo del perro:", error);
+      }
+
+
+      escal();
+
+      identidad(MatrizVista);
+      gl.uniformMatrix4fv(uMatrizVista, false, MatrizVista);
+
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0, 0, 0, 1);
+
+      requestAnimationFrame(dibuja);
+    }
+
+    window.onload = main;
+  </script>
+</body>
+
+</html>
