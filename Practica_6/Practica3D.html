@@ -137,7 +137,7 @@
         </div>
         
         <div class="controls-group">
-            <h3>Rotación Continua</h3>
+            <h3>Rotación</h3>
             <button id="btn-start-rot">GIRAR</button>
             <button id="btn-stop-rot">PARAR</button>
         </div>
@@ -379,13 +379,9 @@
 
     let zoom = 1.0;
     let modoMalla = false;
-
-    // INICIO: VARIABLES DE ROTACIÓN AUTOMÁTICA AÑADIDAS
     let rotacionAutomaticaActiva = false;
     let anguloRotacionAuto = 0;
     let ultimaVez = 0;
-    // FIN: VARIABLES DE ROTACIÓN AUTOMÁTICA AÑADIDAS
-
 
     function mouseDown(event) {
       let posx, posy;
@@ -632,8 +628,6 @@
       document.getElementById("btn-rot-left").addEventListener("click", () => mov('rot-left'));
       document.getElementById("btn-up").addEventListener("click", () => mov('up'));
       document.getElementById("btn-down").addEventListener("click", () => mov('down'));
-
-      // INICIO: LISTENERS DE ROTACIÓN AUTOMÁTICA AÑADIDOS
       document.getElementById("btn-start-rot").addEventListener("click", () => {
         rotacionAutomaticaActiva = true;
         ultimaVez = performance.now();
@@ -644,7 +638,6 @@
         // Transfiere la rotación actual a la rotación manual
         rotX = anguloRotacionAuto;
       });
-      // FIN: LISTENERS DE ROTACIÓN AUTOMÁTICA AÑADIDOS
 
       document.getElementById("btn-zoom-in").addEventListener("click", () => fZoom('in'));
       document.getElementById("btn-zoom-out").addEventListener("click", () => fZoom('out'));
@@ -852,10 +845,9 @@
         carNumIndices = modelData.indices.length;
 
       } catch (error) {
-        console.error("Error cargando el modelo del auto:", error);
+        console.error("Error:", error);
       }
 
-      // Carga y creación del modelo del Perro (Husky)
       try {
         const mtlResponse = await fetch('Husky.mtl');
         const mtlText = await mtlResponse.text();
@@ -869,7 +861,7 @@
         dogNumIndices = modelData.indices.length;
 
       } catch (error) {
-        console.error("Error cargando el modelo del perro:", error);
+        console.error("Error:", error);
       }
 
 
