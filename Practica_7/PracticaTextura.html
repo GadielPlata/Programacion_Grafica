@@ -1,0 +1,770 @@
+﻿<!DOCTYPE HTML>
+<html>
+
+<head>
+    <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0px;
+      border: 0;
+      overflow: hidden;
+      display: block;
+    }
+
+    #gui-left {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-family: sans-serif;
+      z-index: 10;
+      width: 170px;
+    }
+
+    #gui-right {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-family: sans-serif;
+      z-index: 10;
+      width: 170px;
+    }
+
+    #gui-movement,
+    .controls-group,
+    #gui-malla,
+    #gui-componentes {
+      padding: 5px 10px;
+      background-color: rgba(255, 255, 255, 0.8);
+      border-radius: 5px;
+      margin-bottom: 5px;
+      width: 150px;
+      box-sizing: border-box;
+    }
+
+    .controls-group button,
+    #gui-malla button,
+    #gui-componentes button {
+      display: block;
+      margin-bottom: 1px;
+      padding: 4px;
+      width: 100%;
+      cursor: pointer;
+    }
+
+    #gui-componentes button:last-child,
+    .controls-group button:last-child {
+      margin-bottom: 0px;
+    }
+
+
+    .d-pad-container {
+      display: grid;
+      grid-template-columns: auto auto auto; 
+      grid-template-rows: 1fr 1fr 1fr;
+      gap: 2px;
+      justify-content: center; 
+      align-items: center;
+      background-color: rgba(0, 0, 0, 0.1);
+      padding: 5px;
+      border-radius: 10px;
+      margin-bottom: 5px;
+    }
+
+    .d-pad-container button {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    #btn-up {
+      grid-area: 1 / 2 / 2 / 3;
+    }
+
+    #btn-rot-left {
+      grid-area: 2 / 1 / 3 / 2;
+    }
+
+    #btn-front {
+      grid-area: 2 / 2 / 3 / 3;
+    }
+
+    #btn-rot-right {
+      grid-area: 2 / 3 / 3 / 4;
+    }
+
+    #btn-down {
+      grid-area: 3 / 2 / 4 / 3;
+    }
+
+    .controls-group h3,
+    #gui-componentes h3,
+    #gui-movement h3 {
+      margin-top: 0;
+      margin-bottom: 5px;
+    }
+    </style>
+    <title>Casa 3D Interacción en WebGL 2.0 con Texturas</title>
+    
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+  <canvas id="webglcanvas" style="border: none;" width="500" height="500"></canvas>
+  <img src="pared.jpg" id="texturaBase" hidden />
+  <img src="techo.jpg" id="texturaTecho" hidden />
+  <img src="puerta.png" id="texturaPuerta" hidden />
+  <img src="ventana.png" id="texturaVentana" hidden />
+  <img src="chime.jpg" id="texturaChimenea" hidden />
+  <div id="gui-left">
+    <div id="gui-componentes">
+      <h3>Componentes</h3>
+      <button id="btn-base">Base: Visible</button>
+      <button id="btn-techo">Techo: Visible</button>
+      <button id="btn-puerta">Puerta: Visible</button>
+      <button id="btn-ventanas">Ventanas: Visible</button>
+      <button id="btn-chimenea">Chimenea: Visible</button>
+    </div>
+    <div id="gui-malla" class="controls-group">
+      <button id="btn-malla">Malla / Textura</button>
+    </div>
+  </div>
+  <div id="gui-right">
+    <div id="gui-movement" class="controls-group">
+      <h3>Movimiento</h3>
+      <div class="d-pad-container">
+        <button id="btn-up">▲</button>
+        <button id="btn-rot-left">◀</button>
+        <button id="btn-front">●</button>
+        <button id="btn-rot-right">►</button>
+        <button id="btn-down">▼</button>
+      </div>
+    </div>
+    <div class="controls-group">
+      <h3>Zoom</h3>
+      <button id="btn-zoom-in">Zoom +</button>
+      <button id="btn-zoom-out">Zoom -</button>
+    </div>
+  </div>
+  <script id="vs" type="vertex">
+#version 300 es
+uniform mat4 uMatrizProyeccion;
+uniform mat4 uMatrizVista;
+uniform mat4 uMatrizModelo;
+layout(location = 0) in vec3 aVertices;
+layout(location = 2) in vec2 aCoordenadasDeTextura; 
+out vec2 vCoordenadasDeTextura; 
+void main() {
+vCoordenadasDeTextura = aCoordenadasDeTextura;
+gl_Position = uMatrizProyeccion * uMatrizVista * uMatrizModelo * vec4(aVertices, 1.0);
+}
+</script>   
+  <script id="fs" type="fragment">
+#version 300 es
+precision highp float;
+in vec2 vCoordenadasDeTextura;
+uniform bool uModoMalla;
+uniform vec4 uColorMalla;
+uniform sampler2D uUnidadDeTextura;
+out vec4 color;
+void main() {
+if (uModoMalla) {
+color = uColorMalla;
+} else {
+color = texture(uUnidadDeTextura, vCoordenadasDeTextura); 
+}
+}
+  </script> 
+  <script>
+    "use strict";
+    function toRadians(grados) { return grados * Math.PI / 180; };
+    function identidad(r) {
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+    function traslacion(matriz, tx, ty, tz) {
+      let r = new Array(16);
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = tx;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = ty;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = tz;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function escalacion(matriz, sx, sy, sz) {
+      let r = new Array(16);
+      r[0] = sx; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = sy; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = sz; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionX(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = 1; r[4] = 0; r[8] = 0; r[12] = 0;
+      r[1] = 0; r[5] = c; r[9] = -s; r[13] = 0;
+      r[2] = 0; r[6] = s; r[10] = c; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionY(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = c; r[4] = 0; r[8] = s; r[12] = 0;
+      r[1] = 0; r[5] = 1; r[9] = 0; r[13] = 0;
+      r[2] = -s; r[6] = 0; r[10] = c; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function rotacionZ(matriz, theta) {
+      let r = new Array(16);
+      let c = Math.cos(toRadians(theta));
+      let s = Math.sin(toRadians(theta));
+      r[0] = c; r[4] = -s; r[8] = 0; r[12] = 0;
+      r[1] = s; r[5] = c; r[9] = 0; r[13] = 0;
+      r[2] = 0; r[6] = 0; r[10] = 1; r[14] = 0;
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+      multiplica(matriz, matriz, r);
+    }
+    function ortho(r, izq, der, abj, arr, cerca, lejos) {
+      r[0] = 2 / (der - izq); r[4] = 0; r[8] = 0; r[12] = -(der + izq) / (der - izq);
+      r[1] = 0; r[5] = 2 / (arr - abj); r[9] = 0; r[13] = -(arr + abj) / (arr - abj);
+      r[2] = 0; r[6] = 0; r[10] = -2 / (lejos - cerca); r[14] = -(lejos + cerca) / (lejos - cerca);
+      r[3] = 0; r[7] = 0; r[11] = 0; r[15] = 1;
+    }
+    function multiplica(c, a, b) {
+      let r = new Array(16);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          let s = 0;
+          for (let k = 0; k < 4; k++)
+            s += a[i + k * 4] * b[k + j * 4];
+          r[i + j * 4] = s;
+        }
+      }
+      for (let i = 0; i < 16; i++)
+        c[i] = r[i];
+    }
+    let gl, canvas;
+    let programaID;
+    let casaVAO = {};
+    let rotX = 0;
+    let rotY = 0;
+    let antX;
+    let antY;
+    let boton_izq_presionado = false;
+    let uMatrizProyeccion;
+    let uMatrizVista;
+    let uMatrizModelo;
+    let uModoMallaLoc;
+    let uColorMallaLoc;
+    let uUnidadDeTexturaLoc;
+    let MatrizProyeccion = new Array(16);
+    let MatrizVista = new Array(16);
+    let MatrizModelo = new Array(16);
+    let zoom = 1.0;
+    let traslacionY = 0;
+    let modoMalla = false;
+    let texturas = {};
+
+    let visibilidadComponentes = {
+      base: true,
+      techo: true,
+      puerta: true,
+      ventanas: true,
+      chimenea: true
+    };
+
+    function mouseDown(event) {
+      let posx, posy;
+      if (event.x != undefined && event.y != undefined) { posx = event.x; posy = event.y; }
+      else { posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft; posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop; }
+      posx -= canvas.offsetLeft;
+      posy -= canvas.offsetTop;
+      antX = posx;
+      antY = posy;
+      boton_izq_presionado = true;
+      return false;
+    }
+    function mouseUp() { boton_izq_presionado = false; }
+    function mouseMove(event) {
+      if (!boton_izq_presionado) return false;
+      let posx, posy;
+      if (event.x != undefined && event.y != undefined) { posx = event.x; posy = event.y; }
+      else { posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft; posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop; }
+      posx -= canvas.offsetLeft;
+      posy -= canvas.offsetTop;
+      let dx = posx - antX;
+      let dy = posy - antY;
+      rotX += dx * 0.36;
+      rotY += dy * 0.36;
+      antX = posx;
+      antY = posy;
+    }
+    function mov(action) {
+      const step = 0.3;
+      const rotStep = 5;
+
+      switch (action) {
+        case 'front':
+          rotX = 0;
+          rotY = 0;
+          traslacionY = 0;
+          zoom = 1.0;
+          escal();
+          break;
+        case 'rot-right':
+          rotX += rotStep;
+          break;
+        case 'rot-left':
+          rotX -= rotStep;
+          break;
+        case 'up':
+          traslacionY += step;
+          break;
+        case 'down':
+          traslacionY -= step;
+          break;
+      }
+    }
+    function fZoom(dir) {
+      const dzoom = 0.2;
+      if (dir === 'in') {
+        zoom = Math.max(0.5, zoom - dzoom);
+      } else if (dir === 'out') {
+        zoom = Math.min(10.0, zoom + dzoom);
+      }
+      escal();
+    }
+    function escal() {
+      const scale = 5.0 * zoom;
+      ortho(MatrizProyeccion, -scale * gl.canvas.width / gl.canvas.height, scale * gl.canvas.width / gl.canvas.height, -scale, scale, -5, 5);
+      gl.uniformMatrix4fv(uMatrizProyeccion, false, MatrizProyeccion);
+    }
+
+    function toggleComponente(componente) {
+      visibilidadComponentes[componente] = !visibilidadComponentes[componente];
+      const button = document.getElementById(`btn-${componente}`);
+      const nombreComponente = componente.charAt(0).toUpperCase() + componente.slice(1);
+      if (visibilidadComponentes[componente]) {
+        button.textContent = `${nombreComponente}: Visible`;
+        button.style.backgroundColor = '#4CAF50';
+      } else {
+        button.textContent = `${nombreComponente}: Oculto`;
+        button.style.backgroundColor = '#f44336';
+      }
+    }
+
+    function leeLaTextura(gl, ID_del_archivo, codigoDeTextura) {
+      gl.bindTexture(gl.TEXTURE_2D, codigoDeTextura);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      let imagen = document.getElementById(ID_del_archivo);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imagen);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); 
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); 
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    function dibujarComponente(componente, texturaID) {
+      if (!visibilidadComponentes[componente]) return;
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(uUnidadDeTexturaLoc, 0);
+      gl.bindTexture(gl.TEXTURE_2D, texturas[texturaID]);
+
+      if (componente === 'ventanas') {
+        for (let i = 1; i <= 3; i++) {
+          const vaoData = casaVAO[`ventana${i}`];
+          if (!vaoData) continue;
+          gl.bindVertexArray(vaoData.vao);
+          if (modoMalla) {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboLines);
+            gl.drawElements(gl.LINES, vaoData.countLines, gl.UNSIGNED_SHORT, 0);
+          } else {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboTriangles);
+            gl.drawElements(gl.TRIANGLES, vaoData.countTriangles, gl.UNSIGNED_SHORT, 0);
+          }
+        }
+      } else {
+        const vaoData = casaVAO[componente];
+        if (!vaoData) return;
+        gl.bindVertexArray(vaoData.vao);
+
+        if (modoMalla) {
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboLines);
+          gl.drawElements(gl.LINES, vaoData.countLines, gl.UNSIGNED_SHORT, 0);
+        } else {
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vaoData.iboTriangles);
+          gl.drawElements(gl.TRIANGLES, vaoData.countTriangles, gl.UNSIGNED_SHORT, 0);
+        }
+      }
+
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    function dibuja() {
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      identidad(MatrizModelo);
+      traslacion(MatrizModelo, 0, traslacionY, 0);
+      rotacionY(MatrizModelo, rotX);
+      rotacionX(MatrizModelo, rotY);
+      escalacion(MatrizModelo, 2, 2, 2);
+      gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+      gl.uniform1i(uModoMallaLoc, modoMalla);
+      gl.uniform4fv(uColorMallaLoc, [1.0, 1.0, 1.0, 1.0]);
+
+      dibujarComponente('base', 'base');
+      dibujarComponente('techo', 'techo');
+      dibujarComponente('puerta', 'puerta');
+      dibujarComponente('ventanas', 'ventana');
+      dibujarComponente('chimenea', 'chimenea');
+
+      gl.bindVertexArray(null);
+      requestAnimationFrame(dibuja);
+    }
+
+    function crearVAO(vertices, indicesTriangles, indicesLines, coordenadasDeTextura) {
+      let vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+
+      let vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+      let tbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coordenadasDeTextura), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(2);
+      gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+
+      gl.disableVertexAttribArray(1);
+
+      let iboTriangles = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iboTriangles);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicesTriangles), gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+      let iboLines = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iboLines);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicesLines), gl.STATIC_DRAW);
+
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+      return {
+        vao: vao,
+        iboTriangles: iboTriangles,
+        iboLines: iboLines,
+        countTriangles: indicesTriangles.length,
+        countLines: indicesLines.length
+      };
+    }
+
+    function crearIndicesMalla(indicesTriangles) {
+      let indicesLines = [];
+      for (let i = 0; i < indicesTriangles.length; i += 3) {
+        const v1 = indicesTriangles[i];
+        const v2 = indicesTriangles[i + 1];
+        const v3 = indicesTriangles[i + 2];
+        indicesLines.push(v1, v2);
+        indicesLines.push(v2, v3);
+        indicesLines.push(v3, v1);
+      }
+      return indicesLines;
+    }
+
+    function generarDatosVentana(xCenter, yCenter, zCenter, normalAxis) {
+      const w = 0.5;
+      const h = 0.5;
+      const depth = 0.08;
+      let vertices = [];
+      
+      if (normalAxis === 'x') {
+        vertices = [
+          xCenter - depth / 2, yCenter + h, zCenter + w, 
+          xCenter - depth / 2, yCenter + h, zCenter - w, 
+          xCenter - depth / 2, yCenter - h, zCenter - w, 
+          xCenter - depth / 2, yCenter - h, zCenter + w, 
+          xCenter + depth / 2, yCenter + h, zCenter + w, 
+          xCenter + depth / 2, yCenter + h, zCenter - w, 
+          xCenter + depth / 2, yCenter - h, zCenter - w, 
+          xCenter + depth / 2, yCenter - h, zCenter + w, 
+        ];
+      } else if (normalAxis === '-x') { 
+        vertices = [
+          xCenter + depth / 2, yCenter + h, zCenter - w, 
+          xCenter + depth / 2, yCenter + h, zCenter + w, 
+          xCenter + depth / 2, yCenter - h, zCenter + w, 
+          xCenter + depth / 2, yCenter - h, zCenter - w, 
+          xCenter - depth / 2, yCenter + h, zCenter - w, 
+          xCenter - depth / 2, yCenter + h, zCenter + w, 
+          xCenter - depth / 2, yCenter - h, zCenter + w, 
+          xCenter - depth / 2, yCenter - h, zCenter - w, 
+        ];
+      } else if (normalAxis === '-z') { 
+        vertices = [
+          xCenter + w, yCenter + h, zCenter + depth / 2, 
+          xCenter - w, yCenter + h, zCenter + depth / 2, 
+          xCenter - w, yCenter - h, zCenter + depth / 2, 
+          xCenter + w, yCenter - h, zCenter + depth / 2, 
+          xCenter + w, yCenter + h, zCenter - depth / 2, 
+          xCenter - w, yCenter + h, zCenter - depth / 2, 
+          xCenter - w, yCenter - h, zCenter - depth / 2, 
+          xCenter + w, yCenter - h, zCenter - depth / 2, 
+        ];
+      } else if (normalAxis === 'z') {
+         vertices = [
+          xCenter - w, yCenter + h, zCenter + depth / 2, 
+          xCenter + w, yCenter + h, zCenter + depth / 2, 
+          xCenter + w, yCenter - h, zCenter + depth / 2, 
+          xCenter - w, yCenter - h, zCenter + depth / 2, 
+          xCenter - w, yCenter + h, zCenter - depth / 2, 
+          xCenter + w, yCenter + h, zCenter - depth / 2, 
+          xCenter + w, yCenter - h, zCenter - depth / 2, 
+          xCenter - w, yCenter - h, zCenter - depth / 2, 
+        ];
+      }
+
+      let faceUVs = [0, 1, 1, 1, 1, 0, 0, 0];
+      const sideUVs = [0, 0.5, 0.5, 0.5, 0.5, 0, 0, 0];
+
+      let coordenadasDeTextura = [];
+      let indicesTriangles = [];
+
+      coordenadasDeTextura.push(...faceUVs); 
+      coordenadasDeTextura.push(...faceUVs); 
+      indicesTriangles.push(0, 1, 2, 0, 2, 3);
+      indicesTriangles.push(4, 5, 6, 4, 6, 7);
+      
+      coordenadasDeTextura.push(...sideUVs);
+      indicesTriangles.push(0, 1, 5, 0, 5, 4);
+      coordenadasDeTextura.push(...sideUVs);
+      indicesTriangles.push(3, 2, 6, 3, 6, 7);
+      coordenadasDeTextura.push(...sideUVs);
+      indicesTriangles.push(0, 3, 7, 0, 7, 4);
+      coordenadasDeTextura.push(...sideUVs);
+      indicesTriangles.push(1, 2, 6, 1, 6, 5);
+
+      return {
+        vertices: vertices,
+        indicesTriangles: indicesTriangles,
+        coordenadasDeTextura: coordenadasDeTextura
+      };
+    }
+
+    function main() {
+      canvas = document.getElementById("webglcanvas");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl = canvas.getContext("webgl2");
+      if (!gl) {
+        document.write("WebGL 2.0 no está disponible en tu navegador");
+        return;
+      }
+      canvas.addEventListener("mousedown", mouseDown, false);
+      canvas.addEventListener("mouseup", mouseUp, false);
+      canvas.addEventListener("mouseout", mouseUp, false);
+      canvas.addEventListener("mousemove", mouseMove, false);
+
+      document.getElementById("btn-front").addEventListener("click", () => mov('front'));
+      document.getElementById("btn-rot-right").addEventListener("click", () => mov('rot-right'));
+      document.getElementById("btn-rot-left").addEventListener("click", () => mov('rot-left'));
+      document.getElementById("btn-up").addEventListener("click", () => mov('up'));
+      document.getElementById("btn-down").addEventListener("click", () => mov('down'));
+      document.getElementById("btn-zoom-in").addEventListener("click", () => fZoom('in'));
+      document.getElementById("btn-zoom-out").addEventListener("click", () => fZoom('out'));
+
+      document.getElementById("btn-malla").addEventListener("click", () => {
+        modoMalla = !modoMalla;
+        gl.lineWidth(modoMalla ? 2.0 : 1.0);
+      });
+
+      const componentes = ['base', 'techo', 'puerta', 'ventanas', 'chimenea'];
+      componentes.forEach(comp => {
+        document.getElementById(`btn-${comp}`).addEventListener("click", () => toggleComponente(comp));
+      });
+
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      let shaderDeVertice = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(shaderDeVertice, document.getElementById("vs").text.trim());
+      gl.compileShader(shaderDeVertice);
+      if (!gl.getShaderParameter(shaderDeVertice, gl.COMPILE_STATUS)) { console.error("Error FATAL en shader de vértice: " + gl.getShaderInfoLog(shaderDeVertice)); return; }
+      let shaderDeFragmento = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(shaderDeFragmento, document.getElementById("fs").text.trim());
+      gl.compileShader(shaderDeFragmento);
+      if (!gl.getShaderParameter(shaderDeFragmento, gl.COMPILE_STATUS)) { console.error("Error FATAL en shader de fragmento: " + gl.getShaderInfoLog(shaderDeFragmento)); return; }
+      programaID = gl.createProgram();
+      gl.attachShader(programaID, shaderDeVertice);
+      gl.attachShader(programaID, shaderDeFragmento);
+      gl.linkProgram(programaID);
+      if (!gl.getProgramParameter(programaID, gl.LINK_STATUS)) { console.error("Error FATAL al linkear programa: " + gl.getProgramInfoLog(programaID)); return; }
+      gl.useProgram(programaID);
+
+      uMatrizProyeccion = gl.getUniformLocation(programaID, "uMatrizProyeccion");
+      uMatrizVista = gl.getUniformLocation(programaID, "uMatrizVista");
+      uMatrizModelo = gl.getUniformLocation(programaID, "uMatrizModelo");
+      uModoMallaLoc = gl.getUniformLocation(programaID, "uModoMalla");
+      uColorMallaLoc = gl.getUniformLocation(programaID, "uColorMalla");
+      uUnidadDeTexturaLoc = gl.getUniformLocation(programaID, "uUnidadDeTextura");
+
+      const texturaIds = ['base', 'techo', 'puerta', 'ventana', 'chimenea'];
+      texturaIds.forEach(id => {
+        texturas[id] = gl.createTexture();
+        leeLaTextura(gl, `textura${id.charAt(0).toUpperCase() + id.slice(1)}`, texturas[id]);
+      });
+
+      let baseVertices = [
+        -1, 1, 1, 1, 1, 1, 1, -1, 1, -1, -1, 1,
+        -1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, -1,
+        -1, -1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1,
+        1, 1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1,
+        -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1
+      ];
+      let baseTexturaUVs = [
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        1, 1, 0, 1, 0, 0, 1, 0
+      ];
+      let baseIndices = [
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19
+      ];
+
+      let techoVertices = [
+        -1, 1, 1, 1, 1, 1, 0, 2, 1,
+        1, 1, -1, -1, 1, -1, 0, 2, -1,
+        1, 1, 1, 1, 1, -1, 0, 2, -1, 0, 2, 1,
+        -1, 1, -1, -1, 1, 1, 0, 2, 1, 0, 2, -1
+      ];
+      let techoTexturaUVs = [
+        0, 0.5, 1, 0.5, 0.5, 1, 
+        0, 0.5, 1, 0.5, 0.5, 1, 
+        0, 0, 
+        1, 0,
+        1, 1,
+        0, 1,
+        0, 0, 
+        1, 0,
+        1, 1,  
+        0, 1    
+      ];
+      let techoIndices = [
+        0, 1, 2,
+        3, 4, 5,
+        6, 7, 8, 6, 8, 9,
+        10, 11, 12, 10, 12, 13
+      ];
+
+      const doorDepth = 0.08;
+      let doorData = generarDatosVentana(0, -0.25, 1, 'z');
+      doorData.vertices = [ 
+        -0.3, 0.5, 1.0 + doorDepth / 2, 0.3, 0.5, 1.0 + doorDepth / 2, 0.3, -1, 1.0 + doorDepth / 2, -0.3, -1, 1.0 + doorDepth / 2,
+        -0.3, 0.5, 1.0 - doorDepth / 2, 0.3, 0.5, 1.0 - doorDepth / 2, 0.3, -1, 1.0 - doorDepth / 2, -0.3, -1, 1.0 - doorDepth / 2,
+      ];
+      let puertaIndices = [
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        0, 4, 5, 0, 5, 1,
+        3, 7, 6, 3, 6, 2,
+        0, 3, 7, 0, 7, 4,
+        1, 2, 6, 1, 6, 5
+      ];
+      let puertaTexturaUVs = [
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0
+      ];
+
+      let ventana1Data = generarDatosVentana(1, 0, 0, 'x'); 
+      let ventana2Data = generarDatosVentana(-1, 0, 0, '-x'); 
+      let ventana3Data = generarDatosVentana(0, 0, -1, '-z'); 
+
+      let chimneyVertices = [];
+      let chimneyTexturaUVs = [];
+      let chimneyIndices = [];
+      const chimneyRadius = 0.15;
+      const chimneyHeight = 0.7;
+      const chimneySegments = 16;
+      const chimneyOffsetY = 1 + (chimneyHeight / 2);
+      const chimneyOffsetX = 0.6;
+      const chimneyOffsetZ = -0.5;
+      const centerTopIndex = 0;
+      const centerBottomIndex = 1;
+
+      chimneyVertices.push(0 + chimneyOffsetX, chimneyHeight / 2 + chimneyOffsetY, 0 + chimneyOffsetZ);
+      chimneyTexturaUVs.push(0.5, 0.5);
+      chimneyVertices.push(0 + chimneyOffsetX, -chimneyHeight / 2 + chimneyOffsetY, 0 + chimneyOffsetZ);
+      chimneyTexturaUVs.push(0.5, 0.5);
+
+      for (let i = 0; i < chimneySegments; i++) {
+        const angle = i * 2 * Math.PI / chimneySegments;
+        const x = chimneyRadius * Math.cos(angle);
+        const z = chimneyRadius * Math.sin(angle); 
+        let topIndex = 2 + 2 * i;
+        let bottomIndex = 3 + 2 * i;
+
+        chimneyVertices.push(x + chimneyOffsetX, chimneyHeight / 2 + chimneyOffsetY, z + chimneyOffsetZ);
+        chimneyTexturaUVs.push(i / chimneySegments, 1.0);
+        chimneyVertices.push(x + chimneyOffsetX, -chimneyHeight / 2 + chimneyOffsetY, z + chimneyOffsetZ);
+        chimneyTexturaUVs.push(i / chimneySegments, 0.0);
+
+        let nextTopIndex = 2 + 2 * ((i + 1) % chimneySegments);
+        let nextBottomIndex = 3 + 2 * ((i + 1) % chimneySegments);
+
+        chimneyIndices.push(centerTopIndex, topIndex, nextTopIndex);
+        chimneyIndices.push(centerBottomIndex, nextBottomIndex, bottomIndex);
+        chimneyIndices.push(topIndex, bottomIndex, nextBottomIndex);
+        chimneyIndices.push(topIndex, nextBottomIndex, nextTopIndex);
+      }
+
+      const baseIndicesLines = crearIndicesMalla(baseIndices);
+      const techoIndicesLines = crearIndicesMalla(techoIndices);
+      const puertaIndicesLines = crearIndicesMalla(puertaIndices);
+      const chimneyIndicesLines = crearIndicesMalla(chimneyIndices);
+      
+      const ventana1IndicesLines = crearIndicesMalla(ventana1Data.indicesTriangles);
+      const ventana2IndicesLines = crearIndicesMalla(ventana2Data.indicesTriangles);
+      const ventana3IndicesLines = crearIndicesMalla(ventana3Data.indicesTriangles);
+
+      casaVAO.base = crearVAO(baseVertices, baseIndices, baseIndicesLines, baseTexturaUVs);
+      casaVAO.techo = crearVAO(techoVertices, techoIndices, techoIndicesLines, techoTexturaUVs);
+      casaVAO.puerta = crearVAO(doorData.vertices, puertaIndices, puertaIndicesLines, puertaTexturaUVs);
+      
+      casaVAO.ventana1 = crearVAO(ventana1Data.vertices, ventana1Data.indicesTriangles, ventana1IndicesLines, ventana1Data.coordenadasDeTextura);
+      casaVAO.ventana2 = crearVAO(ventana2Data.vertices, ventana2Data.indicesTriangles, ventana2IndicesLines, ventana2Data.coordenadasDeTextura);
+      casaVAO.ventana3 = crearVAO(ventana3Data.vertices, ventana3Data.indicesTriangles, ventana3IndicesLines, ventana3Data.coordenadasDeTextura);
+
+      casaVAO.chimenea = crearVAO(chimneyVertices, chimneyIndices, chimneyIndicesLines, chimneyTexturaUVs);
+
+      escal();
+      identidad(MatrizVista);
+      gl.uniformMatrix4fv(uMatrizVista, false, MatrizVista);
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      dibuja();
+    }
+    window.onload = main;
+  </script>
+</body>
+
+</html>
